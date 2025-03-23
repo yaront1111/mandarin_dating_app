@@ -1,186 +1,224 @@
-"use client"
+"use client";
 
-// Optimized UserComponents.js with improved performance, security and UX
-import { useState, useEffect, useCallback, memo, useMemo, useRef } from "react"
-import { Link } from "react-router-dom"
-import { FaHeart, FaComment, FaVideo, FaLock, FaUnlock, FaTrash, FaStar, FaSearch } from "react-icons/fa"
-import { useAuth } from "../context/AuthContext"
-import { useUser } from "../context/UserContext"
-import apiService from "@services/apiService.jsx"
-import { toast } from "react-toastify"
-import { FixedSizeGrid, FixedSizeList } from "react-window"
-import InfiniteLoader from "react-window-infinite-loader"
-import AutoSizer from "react-virtualized-auto-sizer"
-import debounce from "lodash/debounce"
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  memo,
+} from "react";
+import { Link } from "react-router-dom";
+import {
+  FaHeart,
+  FaComment,
+  FaVideo,
+  FaLock,
+  FaUnlock,
+  FaTrash,
+  FaStar,
+  FaSearch,
+  FaTimes,
+  FaChevronLeft,
+  FaChevronRight,
+  FaRegClock,
+  FaCalendarAlt,
+  FaUserAlt,
+  FaTrophy,
+  FaFlag,
+  FaBan,
+  FaSpinner,
+  FaEye,
+  FaCheck,
+} from "react-icons/fa";
+import { toast } from "react-toastify";
+import { FixedSizeGrid, FixedSizeList } from "react-window";
+import InfiniteLoader from "react-window-infinite-loader";
+import AutoSizer from "react-virtualized-auto-sizer";
+import debounce from "lodash/debounce";
 
-// Import the normalizePhotoUrl utility
-import { normalizePhotoUrl } from "../utils/index.js"
+import { useAuth } from "../context/AuthContext";
+import { useUser } from "../context/UserContext";
+import { useChat } from "../context/ChatContext";
+import { useStories } from "../context/StoriesContext";
+import apiService from "@services/apiService.jsx";
 
-// Common constants
-const GRID_COLUMN_COUNT = 3
-const CARD_WIDTH = 300
-const CARD_HEIGHT = 350
-const LIST_ITEM_HEIGHT = 120
-const BATCH_SIZE = 20
+// Utility to normalize photo URLs (ensuring proper formatting)
+import { normalizePhotoUrl } from "../utils/index.js";
 
+// ---------------------------------------------------------------------------
+// Common Constants
+// ---------------------------------------------------------------------------
+const GRID_COLUMN_COUNT = 3;
+const CARD_WIDTH = 300;
+const CARD_HEIGHT = 350;
+const LIST_ITEM_HEIGHT = 120;
+const BATCH_SIZE = 20;
+
+// ---------------------------------------------------------------------------
+// Custom Hooks
+// ---------------------------------------------------------------------------
 /**
- * Custom hook for handling debounced values
+ * useDebounce hook: returns a debounced value that updates after the given delay.
+ * @param {any} value - Value to debounce.
+ * @param {number} delay - Delay in milliseconds.
+ * @returns {any} Debounced value.
  */
 function useDebounce(value, delay) {
-  const [debouncedValue, setDebouncedValue] = useState(value)
-
+  const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
+      setDebouncedValue(value);
+    }, delay);
     return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
-
-  return debouncedValue
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+  return debouncedValue;
 }
 
-// Update the LazyImage component to handle different URL formats
+// ---------------------------------------------------------------------------
+// LazyImage Component
+// ---------------------------------------------------------------------------
+/**
+ * LazyImage component: loads the image only when in view, using an IntersectionObserver.
+ *
+ * @param {string} src - Image source URL.
+ * @param {string} alt - Alternative text.
+ * @param {string} className - Optional CSS classes.
+ * @param {string} placeholder - Fallback placeholder image URL.
+ */
 const LazyImage = memo(({ src, alt, className, placeholder = "/placeholder.svg" }) => {
-  const [loaded, setLoaded] = useState(false)
-  const [error, setError] = useState(false)
-  const imgRef = useRef(null)
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const imgRef = useRef(null);
 
-  // Format the source URL properly
-  // From UserComponents.jsx - Updated formatSrc function in LazyImage component
-  // In UserComponents.jsx - LazyImage component
+  // Use the utility to normalize the source URL
   const formatSrc = useCallback(
     (url) => {
-      if (!url) return placeholder
-      return normalizePhotoUrl(url)
+      return url ? normalizePhotoUrl(url) : placeholder;
     },
     [placeholder],
-  )
+  );
 
-  const formattedSrc = formatSrc(src)
+  const formattedSrc = formatSrc(src);
 
   useEffect(() => {
-    // Initialize Intersection Observer for better performance
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) {
-          if (imgRef.current) {
-            imgRef.current.src = formattedSrc
-          }
-          observer.disconnect()
+        if (entries[0].isIntersecting && imgRef.current) {
+          imgRef.current.src = formattedSrc;
+          observer.disconnect();
         }
       },
-      { rootMargin: "200px" }, // Load images 200px before they come into view
-    )
-
+      { rootMargin: "200px" } // Start loading 200px before the image enters view
+    );
     if (imgRef.current) {
-      observer.observe(imgRef.current)
+      observer.observe(imgRef.current);
     }
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [formattedSrc])
+    return () => observer.disconnect();
+  }, [formattedSrc]);
 
   return (
     <div className={`lazy-image-container ${className}`}>
       {(!loaded || error) && (
         <img
-          src={placeholder || "/placeholder.svg"}
+          src={placeholder}
           alt={`${alt} placeholder`}
           className={`placeholder-image ${className}`}
         />
       )}
       <img
         ref={imgRef}
-        src={placeholder || "/placeholder.svg"} // Initially load placeholder, Observer will swap to actual src
+        src={placeholder}
         alt={alt}
         className={`${className} ${loaded ? "visible" : "hidden"}`}
         onLoad={() => setLoaded(true)}
         onError={() => setError(true)}
       />
     </div>
-  )
-})
+  );
+});
 
+// ---------------------------------------------------------------------------
+// UserCard Component
+// ---------------------------------------------------------------------------
 /**
- * UserCard component for displaying user information in a grid or list
+ * UserCard component: displays user profile information in either a grid or list layout.
+ *
+ * @param {object} props
+ * @param {object} props.user - User object.
+ * @param {function} props.onMessageClick - Callback when message button is clicked.
+ * @param {function} props.onVideoClick - Callback when video call button is clicked.
+ * @param {function} props.onLikeClick - Callback when like button is clicked.
+ * @param {string} props.layout - Layout type ("grid" or "list").
+ * @param {boolean} props.showActions - Whether to show action buttons.
  */
 export const UserCard = memo(
   ({ user, onMessageClick, onVideoClick, onLikeClick, layout = "grid", showActions = true }) => {
-    const [isHovered, setIsHovered] = useState(false)
-    const { user: currentUser } = useAuth()
-    const { isUserLiked } = useUser()
-    const isCurrentUser = currentUser && user && currentUser._id === user._id
-    const liked = isUserLiked(user._id)
+    const [isHovered, setIsHovered] = useState(false);
+    const { user: currentUser } = useAuth();
+    const { isUserLiked } = useUser();
+    const isCurrentUser = currentUser && user && currentUser._id === user._id;
+    const liked = isUserLiked(user._id);
 
-    // Format the last active time
+    // Format last active time for display.
     const formatLastActive = useCallback((lastActive) => {
-      if (!lastActive) return "Unknown"
+      if (!lastActive) return "Unknown";
+      const lastActiveDate = new Date(lastActive);
+      const now = new Date();
+      const diffMs = now - lastActiveDate;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+      if (diffMins < 1) return "Just now";
+      if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+      if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+      if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+      return lastActiveDate.toLocaleDateString();
+    }, []);
 
-      const lastActiveDate = new Date(lastActive)
-      const now = new Date()
-      const diffMs = now - lastActiveDate
-      const diffMins = Math.floor(diffMs / 60000)
-      const diffHours = Math.floor(diffMs / 3600000)
-      const diffDays = Math.floor(diffMs / 86400000)
-
-      if (diffMins < 1) return "Just now"
-      if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`
-      if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`
-      if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`
-
-      return lastActiveDate.toLocaleDateString()
-    }, [])
-
-    // Get the profile photo URL
+    // Return the user’s primary photo or a placeholder.
     const getProfilePhoto = useCallback(() => {
-      if (!user || !user.photos || user.photos.length === 0) {
-        return "/placeholder.svg"
-      }
-      return user.photos[0].url
-    }, [user])
+      if (!user || !user.photos || user.photos.length === 0) return "/placeholder.svg";
+      return user.photos[0].url;
+    }, [user]);
 
-    // Handle card actions
+    // Handlers for actions (message, video, like)
     const handleMessageClick = useCallback(
       (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        if (onMessageClick) onMessageClick(user)
+        e.preventDefault();
+        e.stopPropagation();
+        onMessageClick && onMessageClick(user);
       },
       [onMessageClick, user],
-    )
-
+    );
     const handleVideoClick = useCallback(
       (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        if (onVideoClick) onVideoClick(user)
+        e.preventDefault();
+        e.stopPropagation();
+        onVideoClick && onVideoClick(user);
       },
       [onVideoClick, user],
-    )
-
+    );
     const handleLikeClick = useCallback(
       (e) => {
-        e.preventDefault()
-        e.stopPropagation()
-        if (onLikeClick) onLikeClick(user)
+        e.preventDefault();
+        e.stopPropagation();
+        onLikeClick && onLikeClick(user);
       },
       [onLikeClick, user],
-    )
+    );
 
-    // Memoize user details to prevent unnecessary re-renders
+    // Memoize details to reduce unnecessary renders.
     const userDetails = useMemo(() => {
-      const detailParts = []
-      if (user.details?.age) detailParts.push(`${user.details.age}`)
-      if (user.details?.gender) detailParts.push(`${user.details.gender}`)
-      if (user.details?.location) detailParts.push(`${user.details.location}`)
-      return detailParts.join(" • ")
-    }, [user.details?.age, user.details?.gender, user.details?.location])
+      const parts = [];
+      if (user.details?.age) parts.push(`${user.details.age}`);
+      if (user.details?.gender) parts.push(`${user.details.gender}`);
+      if (user.details?.location) parts.push(`${user.details.location}`);
+      return parts.join(" • ");
+    }, [user.details?.age, user.details?.gender, user.details?.location]);
 
-    // Render grid layout
     if (layout === "grid") {
       return (
         <div
@@ -195,11 +233,9 @@ export const UserCard = memo(
                 src={getProfilePhoto()}
                 alt={`${user.nickname}'s profile`}
                 className="user-card-photo"
-                placeholder="/placeholder.svg"
               />
               {user.isOnline && <span className="online-indicator" aria-label="Online"></span>}
             </div>
-
             <div className="user-card-info">
               <h3 className="user-card-name">{user.nickname}</h3>
               {userDetails && <p className="user-card-details">{userDetails}</p>}
@@ -207,21 +243,12 @@ export const UserCard = memo(
                 {user.isOnline ? "Online now" : `Last active: ${formatLastActive(user.lastActive)}`}
               </p>
             </div>
-
             {showActions && isHovered && !isCurrentUser && (
               <div className="user-card-actions">
-                <button
-                  onClick={handleMessageClick}
-                  className="action-btn message-btn"
-                  aria-label={`Message ${user.nickname}`}
-                >
+                <button onClick={handleMessageClick} className="action-btn message-btn" aria-label={`Message ${user.nickname}`}>
                   <FaComment />
                 </button>
-                <button
-                  onClick={handleVideoClick}
-                  className="action-btn video-btn"
-                  aria-label={`Video call ${user.nickname}`}
-                >
+                <button onClick={handleVideoClick} className="action-btn video-btn" aria-label={`Video call ${user.nickname}`}>
                   <FaVideo />
                 </button>
                 <button
@@ -235,10 +262,10 @@ export const UserCard = memo(
             )}
           </Link>
         </div>
-      )
+      );
     }
 
-    // Render list layout
+    // List layout rendering
     return (
       <div
         className="user-list-item"
@@ -252,11 +279,9 @@ export const UserCard = memo(
               src={getProfilePhoto()}
               alt={`${user.nickname}'s profile`}
               className="user-list-photo"
-              placeholder="/placeholder.svg"
             />
             {user.isOnline && <span className="online-indicator" aria-label="Online"></span>}
           </div>
-
           <div className="user-list-info">
             <h3 className="user-list-name">{user.nickname}</h3>
             {userDetails && <p className="user-list-details">{userDetails}</p>}
@@ -265,21 +290,12 @@ export const UserCard = memo(
             </p>
           </div>
         </Link>
-
         {showActions && !isCurrentUser && (
           <div className="user-list-actions">
-            <button
-              onClick={handleMessageClick}
-              className="action-btn message-btn"
-              aria-label={`Message ${user.nickname}`}
-            >
+            <button onClick={handleMessageClick} className="action-btn message-btn" aria-label={`Message ${user.nickname}`}>
               <FaComment />
             </button>
-            <button
-              onClick={handleVideoClick}
-              className="action-btn video-btn"
-              aria-label={`Video call ${user.nickname}`}
-            >
+            <button onClick={handleVideoClick} className="action-btn video-btn" aria-label={`Video call ${user.nickname}`}>
               <FaVideo />
             </button>
             <button
@@ -292,185 +308,175 @@ export const UserCard = memo(
           </div>
         )}
       </div>
-    )
+    );
   },
-)
+);
 
+// ---------------------------------------------------------------------------
+// UserPhotoGallery Component
+// ---------------------------------------------------------------------------
 /**
- * UserPhotoGallery component for displaying and managing user photos
+ * UserPhotoGallery component: displays and manages a gallery of user photos.
+ * Supports previewing uploads, uploading photos (with progress), and requesting
+ * access for private photos.
+ *
+ * @param {string} userId - ID of the user whose photos to display.
+ * @param {boolean} editable - If true, allows the current user to upload photos.
+ * @param {function} onPhotoClick - Callback when a photo is clicked.
  */
 export const UserPhotoGallery = ({ userId, editable = false, onPhotoClick }) => {
-  const [photos, setPhotos] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const [isUploading, setIsUploading] = useState(false)
-  const [previewFile, setPreviewFile] = useState(null)
-  const { user: currentUser } = useAuth()
-  const isCurrentUser = currentUser && userId === currentUser._id
-  const fileInputRef = useRef(null)
+  const [photos, setPhotos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const [previewFile, setPreviewFile] = useState(null);
+  const [permissionStatus, setPermissionStatus] = useState({});
+  const [loadingPermissions, setLoadingPermissions] = useState({});
+  const fileInputRef = useRef(null);
+  const { user: currentUser } = useAuth();
+  const isCurrentUser = currentUser && userId === currentUser._id;
 
-  // Fetch user photos
+  // Fetch photos from the server
   const fetchPhotos = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const response = await apiService.get(`/users/${userId}`)
+      const response = await apiService.get(`/users/${userId}`);
       if (response.success && response.data.user) {
-        setPhotos(response.data.user.photos || [])
+        setPhotos(response.data.user.photos || []);
       } else {
-        throw new Error(response.error || "Failed to fetch photos")
+        throw new Error(response.error || "Failed to fetch photos");
       }
     } catch (err) {
-      setError(err.message || "Failed to fetch photos")
-      toast.error(err.message || "Failed to fetch photos")
+      setError(err.message || "Failed to fetch photos");
+      toast.error(err.message || "Failed to fetch photos");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [userId])
+  }, [userId]);
 
-  // Load photos on mount
   useEffect(() => {
-    fetchPhotos()
-  }, [fetchPhotos])
+    fetchPhotos();
+  }, [fetchPhotos]);
 
-  // Preview before upload
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    // Validate file type
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"]
+  // Handle file selection and generate preview
+  const handleFileSelect = useCallback((e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/gif"];
     if (!allowedTypes.includes(file.type)) {
-      toast.error("Invalid file type. Please upload a JPEG, PNG, or GIF image.")
-      return
+      toast.error("Invalid file type. Please upload a JPEG, PNG, or GIF image.");
+      return;
     }
-
-    // Validate file size (5MB max)
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("File is too large. Maximum size is 5MB.")
-      return
+      toast.error("File is too large. Maximum size is 5MB.");
+      return;
     }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setPreviewFile({ file, preview: ev.target.result });
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
-    // Create preview
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      setPreviewFile({
-        file,
-        preview: e.target.result,
-      })
-    }
-    reader.readAsDataURL(file)
-  }
+  const handleCancelUpload = useCallback(() => {
+    setPreviewFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = null;
+  }, []);
 
-  // Cancel preview
-  const handleCancelUpload = () => {
-    setPreviewFile(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = null
-    }
-  }
-
-  // Handle photo upload
-  // In UserComponents.jsx - In the uploadPhoto function
-  const handlePhotoUpload = async (isPrivate = false) => {
-    if (!previewFile) return
-
-    setIsUploading(true)
-    setUploadProgress(0)
-
+  // Upload photo with progress tracking
+  const handlePhotoUpload = useCallback(async (isPrivate = false) => {
+    if (!previewFile) return;
+    setIsUploading(true);
+    setUploadProgress(0);
     try {
-      const formData = new FormData()
-      formData.append("photo", previewFile.file)
-      formData.append("isPrivate", isPrivate)
-
+      const formData = new FormData();
+      formData.append("photo", previewFile.file);
+      formData.append("isPrivate", isPrivate);
       const response = await apiService.upload("/users/photos", formData, (progress) => {
-        setUploadProgress(progress)
-      })
-
+        setUploadProgress(progress);
+      });
       if (response.success) {
-        toast.success(`Photo uploaded successfully${isPrivate ? " (Private)" : ""}!`)
-        await fetchPhotos() // Ensure this is awaited
-        setPreviewFile(null)
-        setIsUploading(false) // Make sure to reset uploading state here
+        toast.success(`Photo uploaded successfully${isPrivate ? " (Private)" : ""}!`);
+        await fetchPhotos();
+        setPreviewFile(null);
       } else {
-        throw new Error(response.error || "Failed to upload photo")
+        throw new Error(response.error || "Failed to upload photo");
       }
     } catch (err) {
-      setError(err.message || "Failed to upload photo")
-      toast.error(err.message || "Failed to upload photo")
-      setIsUploading(false) // Important: reset uploading state on error
+      setError(err.message || "Failed to upload photo");
+      toast.error(err.message || "Failed to upload photo");
     } finally {
-      setUploadProgress(0)
-      if (fileInputRef.current) {
-        fileInputRef.current.value = null
-      }
+      setIsUploading(false);
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = null;
     }
-  }
+  }, [previewFile, fetchPhotos]);
 
-  // Handle setting photo as profile photo
-  const handleSetAsProfile = async (photoId) => {
+  // ---------------------------------------------------------------------------
+  // Photo Permission and Request Access
+  // ---------------------------------------------------------------------------
+  const fetchPhotoPermissions = useCallback(async () => {
+    if (!userId) return;
     try {
-      const response = await apiService.put(`/users/photos/${photoId}/profile`)
+      const response = await apiService.get(`/users/${userId}/photo-permissions`);
       if (response.success) {
-        toast.success("Profile photo updated!")
-        fetchPhotos()
+        const statusMap = {};
+        response.data.forEach((permission) => {
+          statusMap[permission.photo] = permission.status;
+        });
+        setPermissionStatus(statusMap);
       } else {
-        throw new Error(response.error || "Failed to update profile photo")
+        console.error("Error fetching permissions:", response.error);
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to update profile photo")
+    } catch (error) {
+      console.error("Error loading photo permissions:", error);
     }
-  }
+  }, [userId]);
 
-  // Handle toggling photo privacy
-  const handleTogglePrivacy = async (photoId, isCurrentlyPrivate) => {
+  const handleRequestAccess = useCallback(async (photoId, e) => {
+    if (e) e.stopPropagation();
+    if (!photoId) return;
+    setLoadingPermissions((prev) => ({ ...prev, [photoId]: true }));
     try {
-      const response = await apiService.put(`/users/photos/${photoId}/privacy`, {
-        isPrivate: !isCurrentlyPrivate,
-      })
+      const response = await apiService.post(`/users/photos/${photoId}/request`, { userId });
       if (response.success) {
-        toast.success(`Photo is now ${!isCurrentlyPrivate ? "private" : "public"}`)
-        fetchPhotos()
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }));
+        toast.success("Photo access requested");
+      } else if (response.message && response.message.includes("already exists")) {
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }));
+        toast.info("Access request already sent for this photo");
       } else {
-        throw new Error(response.error || "Failed to update photo privacy")
+        throw new Error(response.error || "Failed to request access");
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to update photo privacy")
-    }
-  }
-
-  // Handle deleting a photo
-  const handleDeletePhoto = async (photoId) => {
-    if (!window.confirm("Are you sure you want to delete this photo?")) return
-
-    try {
-      const response = await apiService.delete(`/users/photos/${photoId}`)
-      if (response.success) {
-        toast.success("Photo deleted successfully!")
-        fetchPhotos()
+    } catch (error) {
+      if (error.message && error.message.includes("already exists")) {
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }));
+        toast.info("Access request already sent for this photo");
       } else {
-        throw new Error(response.error || "Failed to delete photo")
+        toast.error(error.message || "Failed to request photo access");
       }
-    } catch (err) {
-      toast.error(err.message || "Failed to delete photo")
+    } finally {
+      setLoadingPermissions((prev) => ({ ...prev, [photoId]: false }));
+      fetchPhotoPermissions();
     }
-  }
+  }, [userId, fetchPhotoPermissions]);
 
-  // Handle photo click
-  const handlePhotoClick = (photo) => {
-    if (onPhotoClick) onPhotoClick(photo)
-  }
+  // Handle image loading errors
+  const handleImageError = useCallback((photoId) => {
+    console.error(`Error loading photo ${photoId}`);
+  }, []);
 
   if (loading && photos.length === 0) {
-    return <div className="loading-spinner">Loading photos...</div>
+    return <div className="loading-spinner">Loading photos...</div>;
   }
-
   if (error && photos.length === 0) {
-    return <div className="error-message">Error: {error}</div>
+    return <div className="error-message">Error: {error}</div>;
   }
 
   return (
     <div className="photo-gallery">
+      {/* Preview Section */}
       {previewFile && (
         <div className="photo-preview-container">
           <h4>Photo Preview</h4>
@@ -498,10 +504,11 @@ export const UserPhotoGallery = ({ userId, editable = false, onPhotoClick }) => 
         </div>
       )}
 
+      {/* Photo Grid */}
       {photos.length === 0 ? (
         <div className="no-photos">
           <p>No photos available</p>
-          {isCurrentUser && editable && (
+          {editable && (
             <div className="upload-container">
               <label htmlFor="photo-upload" className="upload-btn">
                 Upload your first photo
@@ -518,129 +525,132 @@ export const UserPhotoGallery = ({ userId, editable = false, onPhotoClick }) => 
           )}
         </div>
       ) : (
-        <>
-          <div className="photo-grid">
-            {photos.map((photo, index) => (
-              <div key={photo._id} className="photo-item">
-                <div
-                  className="photo-container"
-                  onClick={() => handlePhotoClick(photo)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Photo ${index + 1}${photo.isPrivate ? " (Private)" : ""}`}
-                >
+        <div className="photo-grid">
+          {photos.map((photo, index) => (
+            <div key={photo._id} className="photo-item">
+              <div
+                className="photo-container"
+                onClick={() => onPhotoClick && onPhotoClick(photo)}
+                role="button"
+                tabIndex={0}
+                aria-label={`Photo ${index + 1}${photo.isPrivate ? " (Private)" : ""}`}
+              >
+                {photo.isPrivate &&
+                (!permissionStatus[photo._id] || permissionStatus[photo._id] !== "approved") ? (
+                  <div className="private-photo-overlay">
+                    <div className="overlay-content">
+                      <span className="lock-icon">
+                        <FaLock />
+                      </span>
+                      <p>Private Photo</p>
+                      {permissionStatus[photo._id] === "pending" && (
+                        <p className="permission-status pending">Request Pending</p>
+                      )}
+                      {permissionStatus[photo._id] === "rejected" && (
+                        <p className="permission-status rejected">Access Denied</p>
+                      )}
+                      {!permissionStatus[photo._id] && (
+                        <button
+                          onClick={(e) => handleRequestAccess(photo._id, e)}
+                          disabled={loadingPermissions[photo._id]}
+                          className="btn request-access-btn"
+                        >
+                          {loadingPermissions[photo._id] ? (
+                            <FaSpinner className="spinner-icon" />
+                          ) : (
+                            "Request Access"
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
                   <LazyImage
                     src={photo.url || "/placeholder.svg"}
                     alt={`User photo ${index + 1}`}
                     className="photo-image"
                     placeholder="/placeholder.svg"
+                    onError={() => handleImageError(photo._id)}
                   />
-                  {photo.isPrivate && (
-                    <div className="private-indicator">
-                      <FaLock />
-                    </div>
-                  )}
-                </div>
-
-                {isCurrentUser && editable && (
-                  <div className="photo-actions">
-                    {index !== 0 && (
-                      <button
-                        onClick={() => handleSetAsProfile(photo._id)}
-                        className="photo-action-btn profile-btn"
-                        title="Set as profile photo"
-                        aria-label="Set as profile photo"
-                      >
-                        <FaStar />
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleTogglePrivacy(photo._id, photo.isPrivate)}
-                      className="photo-action-btn privacy-btn"
-                      title={photo.isPrivate ? "Make public" : "Make private"}
-                      aria-label={photo.isPrivate ? "Make public" : "Make private"}
-                    >
-                      {photo.isPrivate ? <FaUnlock /> : <FaLock />}
-                    </button>
-                    <button
-                      onClick={() => handleDeletePhoto(photo._id)}
-                      className="photo-action-btn delete-btn"
-                      title="Delete photo"
-                      aria-label="Delete photo"
-                    >
-                      <FaTrash />
-                    </button>
-                  </div>
                 )}
               </div>
-            ))}
-          </div>
-
-          {isCurrentUser && editable && photos.length < 10 && !previewFile && (
-            <div className="upload-container">
-              <label htmlFor="photo-upload" className="upload-btn">
-                Upload Photo
-              </label>
-              <input
-                id="photo-upload"
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/gif"
-                onChange={handleFileSelect}
-                ref={fileInputRef}
-                style={{ display: "none" }}
-              />
             </div>
-          )}
-        </>
+          ))}
+        </div>
+      )}
+
+      {/* Upload Button for Editable Profiles */}
+      {editable && photos.length < 10 && !previewFile && (
+        <div className="upload-container">
+          <label htmlFor="photo-upload" className="upload-btn">
+            Upload Photo
+          </label>
+          <input
+            id="photo-upload"
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/gif"
+            onChange={handleFileSelect}
+            ref={fileInputRef}
+            style={{ display: "none" }}
+          />
+        </div>
       )}
     </div>
-  )
-}
+  );
+};
 
+// ---------------------------------------------------------------------------
+// UserPhotoViewer Component
+// ---------------------------------------------------------------------------
 /**
- * UserPhotoViewer component for viewing photos with privacy controls
+ * UserPhotoViewer component: displays a full-size photo with privacy controls.
+ * If the photo is private and the user doesn’t have access, it shows an overlay
+ * prompting them to request access.
+ *
+ * @param {object} props
+ * @param {object} props.photo - Photo object.
+ * @param {string} props.userId - ID of the photo owner.
+ * @param {function} props.onClose - Callback to close the viewer.
+ * @param {function} props.onNext - Callback to navigate to the next photo.
+ * @param {function} props.onPrevious - Callback to navigate to the previous photo.
+ * @param {boolean} props.isPrivate - Indicates if the photo is private.
+ * @param {boolean} props.hasAccess - Indicates if the viewer has access to the photo.
  */
 export const UserPhotoViewer = ({ photo, userId, onClose, onNext, onPrevious, isPrivate, hasAccess }) => {
-  const [requestingAccess, setRequestingAccess] = useState(false)
-  const { user } = useAuth()
-  const isCurrentUser = user && userId === user._id
+  const [requestingAccess, setRequestingAccess] = useState(false);
+  const { user } = useAuth();
+  const isCurrentUser = user && userId === user._id;
 
-  // Handle requesting access to private photo
   const handleRequestAccess = async () => {
-    if (!user || isCurrentUser) return
-
-    setRequestingAccess(true)
+    if (!user || isCurrentUser) return;
+    setRequestingAccess(true);
     try {
-      const response = await apiService.post(`/users/photos/${photo._id}/request`, { userId })
+      const response = await apiService.post(`/users/photos/${photo._id}/request`, { userId });
       if (response.success) {
-        toast.success("Access requested. The user will be notified.")
+        toast.success("Access requested. The user will be notified.");
       } else {
-        throw new Error(response.error || "Failed to request access")
+        throw new Error(response.error || "Failed to request access");
       }
     } catch (err) {
-      toast.error(err.message || "Failed to request access")
+      toast.error(err.message || "Failed to request access");
     } finally {
-      setRequestingAccess(false)
+      setRequestingAccess(false);
     }
-  }
+  };
 
-  // Handle keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
-        onClose()
+        onClose();
       } else if (e.key === "ArrowRight") {
-        onNext()
+        onNext();
       } else if (e.key === "ArrowLeft") {
-        onPrevious()
+        onPrevious();
       }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [onClose, onNext, onPrevious])
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, onNext, onPrevious]);
 
   return (
     <div className="photo-viewer-overlay" onClick={onClose}>
@@ -648,7 +658,6 @@ export const UserPhotoViewer = ({ photo, userId, onClose, onNext, onPrevious, is
         <button className="close-btn" onClick={onClose} aria-label="Close photo viewer">
           &times;
         </button>
-
         {isPrivate && !hasAccess && !isCurrentUser ? (
           <div className="private-photo-container">
             <div className="private-photo-message">
@@ -663,78 +672,71 @@ export const UserPhotoViewer = ({ photo, userId, onClose, onNext, onPrevious, is
         ) : (
           <div className="photo-viewer-content">
             <img src={photo.url || "/placeholder.svg"} alt="Full size" />
-
             <div className="photo-viewer-controls">
               <button onClick={onPrevious} className="nav-btn prev-btn" aria-label="Previous photo">
-                &lt;
+                <FaChevronLeft />
               </button>
               <button onClick={onNext} className="nav-btn next-btn" aria-label="Next photo">
-                &gt;
+                <FaChevronRight />
               </button>
             </div>
           </div>
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
+// ---------------------------------------------------------------------------
+// UserList Component with Virtualization
+// ---------------------------------------------------------------------------
 /**
- * Optimized UserList component with virtualization for better performance
+ * UserList component: displays a list or grid of users with virtualization for performance.
+ *
+ * @param {object} props
+ * @param {Array} props.users - Array of user objects.
+ * @param {function} props.onUserClick - Callback when a user is clicked.
+ * @param {function} props.onVideoClick - Callback for video call action.
+ * @param {function} props.onLikeClick - Callback for like action.
+ * @param {boolean} props.loading - Loading state.
+ * @param {string} props.error - Error message.
+ * @param {string} props.layout - Layout type ("grid" or "list").
+ * @param {boolean} props.hasMore - Whether more items can be loaded.
+ * @param {function} props.loadMore - Callback to load more items.
+ * @param {number} props.totalCount - Total count of users.
  */
 export const UserList = memo(
-  ({
-    users,
-    onUserClick,
-    onVideoClick,
-    onLikeClick,
-    loading,
-    error,
-    layout = "grid",
-    hasMore = false,
-    loadMore = null,
-    totalCount = 0,
-  }) => {
-    const isItemLoaded = useCallback((index) => !hasMore || index < users.length, [hasMore, users.length])
+  ({ users, onUserClick, onVideoClick, onLikeClick, loading, error, layout = "grid", hasMore = false, loadMore = null, totalCount = 0 }) => {
+    const isItemLoaded = useCallback((index) => !hasMore || index < users.length, [hasMore, users.length]);
 
     if (loading && users.length === 0) {
-      return <div className="loading-spinner">Loading users...</div>
+      return <div className="loading-spinner">Loading users...</div>;
     }
-
     if (error) {
-      return <div className="error-message">Error: {error}</div>
+      return <div className="error-message">Error: {error}</div>;
     }
-
     if (!users || users.length === 0) {
-      return <div className="no-users">No users found</div>
+      return <div className="no-users">No users found</div>;
     }
 
-    // For grid layout, use grid virtualization
     if (layout === "grid") {
-      const rowCount = Math.ceil(totalCount / GRID_COLUMN_COUNT)
-
+      const rowCount = Math.ceil(totalCount / GRID_COLUMN_COUNT);
       return (
         <div className="user-grid-container">
           <AutoSizer>
             {({ height, width }) => (
               <InfiniteLoader isItemLoaded={isItemLoaded} itemCount={totalCount} loadMoreItems={loadMore || (() => {})}>
                 {({ onItemsRendered, ref }) => {
-                  const newItemsRendered = ({
-                    visibleRowStartIndex,
-                    visibleRowStopIndex,
-                    visibleColumnStartIndex,
-                    visibleColumnStopIndex,
-                  }) => {
-                    const startIndex = visibleRowStartIndex * GRID_COLUMN_COUNT + visibleColumnStartIndex
-                    const stopIndex = visibleRowStopIndex * GRID_COLUMN_COUNT + visibleColumnStopIndex
-
+                  const newItemsRendered = ({ visibleRowStartIndex, visibleRowStopIndex, visibleColumnStartIndex, visibleColumnStopIndex }) => {
+                    const startIndex = visibleRowStartIndex * GRID_COLUMN_COUNT + visibleColumnStartIndex;
+                    const stopIndex = visibleRowStopIndex * GRID_COLUMN_COUNT + visibleColumnStopIndex;
                     onItemsRendered({
                       overscanStartIndex: Math.max(0, startIndex - GRID_COLUMN_COUNT),
                       overscanStopIndex: Math.min(totalCount - 1, stopIndex + GRID_COLUMN_COUNT),
                       visibleStartIndex: startIndex,
                       visibleStopIndex: stopIndex,
-                    })
-                  }
+                    });
+                  };
 
                   return (
                     <FixedSizeGrid
@@ -748,40 +750,32 @@ export const UserList = memo(
                       onItemsRendered={newItemsRendered}
                     >
                       {({ columnIndex, rowIndex, style }) => {
-                        const index = rowIndex * GRID_COLUMN_COUNT + columnIndex
+                        const index = rowIndex * GRID_COLUMN_COUNT + columnIndex;
                         if (index >= users.length) {
-                          // Return empty cell for placeholder
                           return loading ? (
                             <div style={style} className="user-card-placeholder">
                               <div className="loading-pulse"></div>
                             </div>
-                          ) : null
+                          ) : null;
                         }
-
-                        const user = users[index]
+                        const user = users[index];
                         return (
                           <div style={style}>
-                            <UserCard
-                              user={user}
-                              onMessageClick={onUserClick}
-                              onVideoClick={onVideoClick}
-                              onLikeClick={onLikeClick}
-                              layout="grid"
-                            />
+                            <UserCard user={user} onMessageClick={onUserClick} onVideoClick={onVideoClick} onLikeClick={onLikeClick} layout="grid" />
                           </div>
-                        )
+                        );
                       }}
                     </FixedSizeGrid>
-                  )
+                  );
                 }}
               </InfiniteLoader>
             )}
           </AutoSizer>
         </div>
-      )
+      );
     }
 
-    // For list layout
+    // List layout rendering
     return (
       <div className="user-list-container">
         <AutoSizer>
@@ -798,26 +792,18 @@ export const UserList = memo(
                 >
                   {({ index, style }) => {
                     if (index >= users.length) {
-                      // Return empty cell for placeholder
                       return loading ? (
                         <div style={style} className="user-list-placeholder">
                           <div className="loading-pulse"></div>
                         </div>
-                      ) : null
+                      ) : null;
                     }
-
-                    const user = users[index]
+                    const user = users[index];
                     return (
                       <div style={style}>
-                        <UserCard
-                          user={user}
-                          onMessageClick={onUserClick}
-                          onVideoClick={onVideoClick}
-                          onLikeClick={onLikeClick}
-                          layout="list"
-                        />
+                        <UserCard user={user} onMessageClick={onUserClick} onVideoClick={onVideoClick} onLikeClick={onLikeClick} layout="list" />
                       </div>
-                    )
+                    );
                   }}
                 </FixedSizeList>
               )}
@@ -825,12 +811,20 @@ export const UserList = memo(
           )}
         </AutoSizer>
       </div>
-    )
-  },
-)
+    );
+  }
+);
 
+// ---------------------------------------------------------------------------
+// UserFilter Component
+// ---------------------------------------------------------------------------
 /**
- * Enhanced UserFilter component with debounced filtering
+ * UserFilter component: provides UI to filter users based on various criteria.
+ *
+ * @param {object} props
+ * @param {function} props.onFilter - Callback invoked with filter values.
+ * @param {object} props.initialFilters - Initial filter values.
+ * @param {function} props.onResetFilters - Callback when filters are reset.
  */
 export const UserFilter = ({ onFilter, initialFilters = {}, onResetFilters }) => {
   const [filters, setFilters] = useState({
@@ -840,37 +834,34 @@ export const UserFilter = ({ onFilter, initialFilters = {}, onResetFilters }) =>
     location: initialFilters.location || "",
     interests: initialFilters.interests || "",
     onlineOnly: initialFilters.onlineOnly || false,
-  })
+  });
 
-  // Debounce filter changes to reduce API calls
-  const debouncedFilters = useDebounce(filters, 500)
+  const debouncedFilters = useDebounce(filters, 500);
 
-  // Apply filters when debounced values change
   useEffect(() => {
-    if (onFilter) onFilter(debouncedFilters)
-  }, [debouncedFilters, onFilter])
+    if (onFilter) onFilter(debouncedFilters);
+  }, [debouncedFilters, onFilter]);
 
-  // Handle filter changes without needing a submit button
   const handleChange = useCallback((e) => {
-    const { name, value, type, checked } = e.target
+    const { name, value, type, checked } = e.target;
     setFilters((prev) => ({
       ...prev,
       [name]: type === "checkbox" ? checked : value,
-    }))
-  }, [])
+    }));
+  }, []);
 
-  // Reset filters
   const resetFilters = useCallback(() => {
-    setFilters({
+    const reset = {
       gender: "",
       minAge: "",
       maxAge: "",
       location: "",
       interests: "",
       onlineOnly: false,
-    })
-    if (onResetFilters) onResetFilters()
-  }, [onResetFilters])
+    };
+    setFilters(reset);
+    if (onResetFilters) onResetFilters();
+  }, [onResetFilters]);
 
   return (
     <div className="user-filter-container">
@@ -880,7 +871,6 @@ export const UserFilter = ({ onFilter, initialFilters = {}, onResetFilters }) =>
           Reset All
         </button>
       </div>
-
       <div className="filter-form">
         <div className="filter-row">
           <div className="filter-group">
@@ -893,119 +883,76 @@ export const UserFilter = ({ onFilter, initialFilters = {}, onResetFilters }) =>
               <option value="other">Other</option>
             </select>
           </div>
-
           <div className="filter-group">
             <label htmlFor="minAge">Min Age</label>
-            <input
-              type="number"
-              id="minAge"
-              name="minAge"
-              min="18"
-              max="120"
-              value={filters.minAge}
-              onChange={handleChange}
-            />
+            <input type="number" id="minAge" name="minAge" min="18" max="120" value={filters.minAge} onChange={handleChange} />
           </div>
-
           <div className="filter-group">
             <label htmlFor="maxAge">Max Age</label>
-            <input
-              type="number"
-              id="maxAge"
-              name="maxAge"
-              min="18"
-              max="120"
-              value={filters.maxAge}
-              onChange={handleChange}
-            />
+            <input type="number" id="maxAge" name="maxAge" min="18" max="120" value={filters.maxAge} onChange={handleChange} />
           </div>
         </div>
-
         <div className="filter-row">
           <div className="filter-group location-group">
             <label htmlFor="location">Location</label>
             <div className="location-input-wrapper">
               <FaSearch className="search-icon" />
-              <input
-                type="text"
-                id="location"
-                name="location"
-                value={filters.location}
-                onChange={handleChange}
-                placeholder="City, Country"
-              />
+              <input type="text" id="location" name="location" value={filters.location} onChange={handleChange} placeholder="City, Country" />
             </div>
           </div>
-
           <div className="filter-group interests-group">
             <label htmlFor="interests">Interests</label>
-            <input
-              type="text"
-              id="interests"
-              name="interests"
-              value={filters.interests}
-              onChange={handleChange}
-              placeholder="Separate with commas"
-            />
+            <input type="text" id="interests" name="interests" value={filters.interests} onChange={handleChange} placeholder="Separate with commas" />
           </div>
         </div>
-
         <div className="filter-row">
           <div className="filter-group checkbox-group">
             <label htmlFor="onlineOnly" className="checkbox-label">
-              <input
-                type="checkbox"
-                id="onlineOnly"
-                name="onlineOnly"
-                checked={filters.onlineOnly}
-                onChange={handleChange}
-              />
+              <input type="checkbox" id="onlineOnly" name="onlineOnly" checked={filters.onlineOnly} onChange={handleChange} />
               <span className="checkbox-text">Online Users Only</span>
             </label>
           </div>
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
+// ---------------------------------------------------------------------------
+// UserSearch Component
+// ---------------------------------------------------------------------------
 /**
- * User Search component for quick user search
+ * UserSearch component: provides a simple search input for quick user searches.
+ *
+ * @param {object} props
+ * @param {function} props.onSearch - Callback invoked when search term changes.
  */
 export const UserSearch = ({ onSearch }) => {
-  const [searchTerm, setSearchTerm] = useState("")
-
-  // Debounce search to avoid excessive API calls
+  const [searchTerm, setSearchTerm] = useState("");
   const debouncedHandleSearch = useCallback(
     debounce((value) => {
-      if (onSearch) onSearch(value)
+      if (onSearch) onSearch(value);
     }, 300),
     [onSearch],
-  )
+  );
 
   const handleChange = (e) => {
-    const value = e.target.value
-    setSearchTerm(value)
-    debouncedHandleSearch(value)
-  }
+    const value = e.target.value;
+    setSearchTerm(value);
+    debouncedHandleSearch(value);
+  };
 
   return (
     <div className="user-search">
       <div className="search-input-wrapper">
         <FaSearch className="search-icon" />
-        <input
-          type="text"
-          placeholder="Search users..."
-          value={searchTerm}
-          onChange={handleChange}
-          className="search-input"
-        />
+        <input type="text" placeholder="Search users..." value={searchTerm} onChange={handleChange} className="search-input" />
         {searchTerm && (
           <button
             className="clear-search"
             onClick={() => {
-              setSearchTerm("")
-              debouncedHandleSearch("")
+              setSearchTerm("");
+              debouncedHandleSearch("");
             }}
             aria-label="Clear search"
           >
@@ -1014,20 +961,29 @@ export const UserSearch = ({ onSearch }) => {
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
+// ---------------------------------------------------------------------------
+// UserAvatar Component
+// ---------------------------------------------------------------------------
 /**
- * User Avatar component for profile pictures
+ * UserAvatar component: displays a user’s profile picture with an optional online status indicator.
+ *
+ * @param {object} props
+ * @param {object} props.user - User object.
+ * @param {string} [props.size="md"] - Size of the avatar ("xs", "sm", "md", "lg", "xl").
+ * @param {boolean} [props.showStatus=true] - Whether to show the online status indicator.
+ * @param {string} [props.className=""] - Additional CSS classes.
  */
 export const UserAvatar = ({ user, size = "md", showStatus = true, className = "" }) => {
   const getProfilePhoto = () => {
-    if (!user) return "/placeholder.svg"
-    if (user.profilePicture) return user.profilePicture
-    if (user.avatar) return user.avatar
-    if (user.photos && user.photos.length > 0) return user.photos[0].url
-    return "/placeholder.svg"
-  }
+    if (!user) return "/placeholder.svg";
+    if (user.profilePicture) return user.profilePicture;
+    if (user.avatar) return user.avatar;
+    if (user.photos && user.photos.length > 0) return user.photos[0].url;
+    return "/placeholder.svg";
+  };
 
   const sizeClasses = {
     xs: "avatar-xs",
@@ -1035,15 +991,15 @@ export const UserAvatar = ({ user, size = "md", showStatus = true, className = "
     md: "avatar-md",
     lg: "avatar-lg",
     xl: "avatar-xl",
-  }
+  };
 
   return (
     <div className={`user-avatar ${sizeClasses[size]} ${className}`}>
       <img src={getProfilePhoto() || "/placeholder.svg"} alt={user?.nickname || "User"} className="avatar-img" />
       {showStatus && user?.isOnline && <span className="status-indicator online" aria-label="Online"></span>}
     </div>
-  )
-}
+  );
+};
 
 export default {
   UserCard,
@@ -1054,4 +1010,4 @@ export default {
   UserSearch,
   UserAvatar,
   LazyImage,
-}
+};

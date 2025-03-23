@@ -1,9 +1,9 @@
-"use client"
-// client/src/components/LayoutComponents.js
-import { useEffect, useState, useRef } from "react"
-import { Link, useNavigate } from "react-router-dom"
-import { useAuth, useNotifications } from "../context"
-import { toast } from "react-toastify"
+"use client";
+
+import React, { useEffect, useState, useRef, useCallback } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth, useNotifications } from "../context";
+import { toast } from "react-toastify";
 import {
   FaUserCircle,
   FaBell,
@@ -14,63 +14,63 @@ import {
   FaEnvelope,
   FaCamera,
   FaImage,
-} from "react-icons/fa"
-import { ThemeToggle } from "./theme-toggle.tsx"
+} from "react-icons/fa";
+import { ThemeToggle } from "./theme-toggle.tsx";
+import "../styles/notifications.css"; // Import the notifications styles
 
-// Modern Navbar Component
+/**
+ * Navbar Component
+ *
+ * Renders the modern header with logo, navigation tabs,
+ * a notification button with dropdown, and a user avatar dropdown.
+ * All visual styling is handled by external CSS.
+ */
 export const Navbar = () => {
-  // Local state for notifications and dropdown toggling
-  const [showNotifications, setShowNotifications] = useState(false)
-  const [showUserDropdown, setShowUserDropdown] = useState(false)
-  const [notificationPulse, setNotificationPulse] = useState(false)
-
-  // Refs for dropdown elements
-  const notificationDropdownRef = useRef(null)
-  const userDropdownRef = useRef(null)
-  const notificationButtonRef = useRef(null)
-
-  // Get global notification state from context
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const [notificationPulse, setNotificationPulse] = useState(false);
+  const notificationDropdownRef = useRef(null);
+  const userDropdownRef = useRef(null);
+  const notificationButtonRef = useRef(null);
   const {
     notifications,
     unreadCount,
     isLoading: loadingNotifications,
     addTestNotification,
-    markAsRead,
     markAllAsRead,
     handleNotificationClick,
-  } = useNotifications()
+  } = useNotifications();
+  const { isAuthenticated, logout, user } = useAuth();
+  const navigate = useNavigate();
 
-  const { isAuthenticated, logout, user } = useAuth()
-  const navigate = useNavigate()
-
+  // Handler: Logout
   const handleLogout = async (e) => {
-    e.preventDefault()
-    await logout()
-  }
+    e.preventDefault();
+    await logout();
+  };
 
-  const navigateToProfile = () => {
-    navigate("/profile")
-  }
+  // Handler: Navigate to profile
+  const navigateToProfile = useCallback(() => {
+    navigate("/profile");
+  }, [navigate]);
 
-  // Toggle notification dropdown using state
-  const toggleNotificationDropdown = (e) => {
-    if (e) {
-      e.preventDefault()
-      e.stopPropagation()
-    }
-    setShowNotifications((prevState) => !prevState)
-    setShowUserDropdown(false) // Close user dropdown
-  }
+  // Toggle notification dropdown; close user dropdown.
+  const toggleNotificationDropdown = useCallback((e) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    setShowNotifications((prev) => !prev);
+    setShowUserDropdown(false);
+  }, []);
 
-  // Toggle user dropdown using state
-  const toggleUserDropdown = (e) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setShowUserDropdown(!showUserDropdown)
-    setShowNotifications(false) // Close notification dropdown
-  }
+  // Toggle user dropdown; close notification dropdown.
+  const toggleUserDropdown = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowUserDropdown((prev) => !prev);
+    setShowNotifications(false);
+  }, []);
 
-  // Close dropdowns if clicking outside
+  // Close dropdowns when clicking outside.
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -79,95 +79,83 @@ export const Navbar = () => {
         notificationButtonRef.current &&
         !notificationButtonRef.current.contains(event.target)
       ) {
-        setShowNotifications(false)
+        setShowNotifications(false);
       }
       if (
         userDropdownRef.current &&
         !userDropdownRef.current.contains(event.target) &&
         !event.target.closest(".user-avatar-dropdown")
       ) {
-        setShowUserDropdown(false)
+        setShowUserDropdown(false);
       }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  // Handle adding a test notification
-  const handleAddTestNotification = (e) => {
-    if (e) {
-      e.stopPropagation()
-    }
+  // Add a test notification (for development/testing).
+  const handleAddTestNotification = useCallback((e) => {
+    e?.stopPropagation();
+    setNotificationPulse(true);
+    setTimeout(() => setNotificationPulse(false), 2000);
+    addTestNotification();
+  }, [addTestNotification]);
 
-    setNotificationPulse(true)
-    setTimeout(() => setNotificationPulse(false), 2000)
+  // Format notification time for display.
+  const formatNotificationTime = useCallback((timestamp) => {
+    if (!timestamp) return "Just now";
+    const now = new Date();
+    const notificationTime = new Date(timestamp);
+    const diffMs = now - notificationTime;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+    if (diffSec < 60) return "Just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    if (diffHour < 24) return `${diffHour}h ago`;
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return notificationTime.toLocaleDateString();
+  }, []);
 
-    addTestNotification()
-  }
-
-  // Format notification time in a human-readable way
-  const formatNotificationTime = (timestamp) => {
-    if (!timestamp) return "Just now"
-
-    const now = new Date()
-    const notificationTime = new Date(timestamp)
-    const diffMs = now - notificationTime
-    const diffSec = Math.floor(diffMs / 1000)
-    const diffMin = Math.floor(diffSec / 60)
-    const diffHour = Math.floor(diffMin / 60)
-    const diffDay = Math.floor(diffHour / 24)
-
-    if (diffSec < 60) return "Just now"
-    if (diffMin < 60) return `${diffMin}m ago`
-    if (diffHour < 24) return `${diffHour}h ago`
-    if (diffDay < 7) return `${diffDay}d ago`
-
-    return notificationTime.toLocaleDateString()
-  }
-
-  // Get appropriate action text based on notification type
-  const getNotificationAction = (notification) => {
+  // Determine action text for notifications.
+  const getNotificationAction = useCallback((notification) => {
     switch (notification.type) {
       case "message":
-        return "sent you a message"
+        return "sent you a message";
       case "like":
-        return "liked your profile"
+        return "liked your profile";
       case "photoRequest":
-        return "requested access to your photo"
+        return "requested access to your photo";
       case "photoResponse":
-        const status = notification.data?.status || ""
-        return status === "approved" ? "approved your photo request" : "declined your photo request"
+        return notification.data?.status === "approved"
+          ? "approved your photo request"
+          : "declined your photo request";
       case "story":
-        return "shared a new story"
+        return "shared a new story";
       case "comment":
-        return "commented on your post"
+        return "commented on your post";
       default:
-        return "sent a notification"
+        return "sent a notification";
     }
-  }
+  }, []);
 
-  // Render notifications list with validation
-  const renderNotifications = () => {
+  // Render notifications list.
+  const renderNotifications = useCallback(() => {
     if (loadingNotifications) {
       return (
         <div className="notification-loading">
           <div className="spinner"></div>
           <p>Loading notifications...</p>
         </div>
-      )
+      );
     }
-
-    // Filter out invalid notifications before rendering
-    const validNotifications = notifications.filter((notification) => {
-      // Check if notification has required fields
-      const hasMessage = notification.message || notification.title || notification.content
-      const hasId = notification._id || notification.id
-
-      // Only return notifications that have at least basic required fields
-      return hasId && hasMessage
-    })
-
-    if (!validNotifications || validNotifications.length === 0) {
+    const validNotifications = notifications.filter((n) => {
+      const hasMessage = n.message || n.title || n.content;
+      const hasId = n._id || n.id;
+      return hasId && hasMessage;
+    });
+    if (!validNotifications.length) {
       return (
         <div className="notification-empty">
           <FaBell size={32} />
@@ -176,36 +164,24 @@ export const Navbar = () => {
             Add Test Notification
           </button>
         </div>
-      )
+      );
     }
-
     return validNotifications.map((notification) => {
-      // Extract notification message from available fields
-      const notificationMessage =
-        notification.message || notification.title || notification.content || "New notification"
-
-      // Extract sender nickname from various possible locations
+      const notificationMessage = notification.message || notification.title || notification.content || "New notification";
       const senderNickname =
         notification.sender?.nickname ||
         notification.data?.sender?.nickname ||
         notification.data?.requester?.nickname ||
         notification.data?.owner?.nickname ||
         notification.data?.user?.nickname ||
-        "Someone"
-
-      // Format the notification time
-      const notificationTime = formatNotificationTime(notification.createdAt)
-
-      // Choose icon based on notification type
-      let NotificationIcon = FaBell
-      if (notification.type === "message") NotificationIcon = FaEnvelope
-      if (notification.type === "like") NotificationIcon = FaHeart
-      if (notification.type === "photoRequest" || notification.type === "photoResponse") NotificationIcon = FaCamera
-      if (notification.type === "story") NotificationIcon = FaImage
-
-      // Determine if this is a new notification (less than 1 minute old)
-      const isNew = notification.createdAt && new Date().getTime() - new Date(notification.createdAt).getTime() < 60000
-
+        "Someone";
+      const notificationTime = formatNotificationTime(notification.createdAt);
+      let NotificationIcon = FaBell;
+      if (notification.type === "message") NotificationIcon = FaEnvelope;
+      if (notification.type === "like") NotificationIcon = FaHeart;
+      if (notification.type === "photoRequest" || notification.type === "photoResponse") NotificationIcon = FaCamera;
+      if (notification.type === "story") NotificationIcon = FaImage;
+      const isNew = notification.createdAt && new Date().getTime() - new Date(notification.createdAt).getTime() < 60000;
       return (
         <div
           key={notification._id || notification.id || Date.now()}
@@ -227,23 +203,25 @@ export const Navbar = () => {
             </div>
           </div>
         </div>
-      )
-    })
-  }
+      );
+    });
+  }, [notifications, loadingNotifications, formatNotificationTime, getNotificationAction, handleAddTestNotification, handleNotificationClick]);
 
-  const handleMarkAllAsRead = (e) => {
-    e.stopPropagation()
-    markAllAsRead()
-    toast.success("All notifications marked as read")
-  }
+  const handleMarkAllAsRead = useCallback((e) => {
+    e.stopPropagation();
+    markAllAsRead();
+    toast.success("All notifications marked as read");
+  }, [markAllAsRead]);
 
   return (
     <header className="modern-header">
       <div className="container d-flex justify-content-between align-items-center">
-        <div className="logo" style={{ cursor: "pointer" }} onClick={() => navigate("/")}>
+        {/* Logo */}
+        <div className="logo" onClick={() => navigate("/")}>
           Mandarin
         </div>
 
+        {/* Navigation Tabs */}
         {isAuthenticated && (
           <div className="main-tabs d-none d-md-flex">
             <button
@@ -263,25 +241,26 @@ export const Navbar = () => {
           </div>
         )}
 
+        {/* Header Actions */}
         <div className="header-actions d-flex align-items-center">
           <ThemeToggle />
-
           {isAuthenticated ? (
             <>
-              <div style={{ position: "relative", marginLeft: "10px" }}>
-                {/* Using notification-specific class to avoid conflicts */}
+              {/* Notification Button */}
+              <div className="notification-wrapper">
                 <button
                   ref={notificationButtonRef}
                   onClick={toggleNotificationDropdown}
                   aria-label="Notifications"
-                  className={`notification-specific-button ${notificationPulse ? "notification-pulse" : ""}`}
+                  className="notification-specific-button"
                 >
                   <FaBell size={20} />
                   {unreadCount > 0 && (
-                    <span className="notification-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+                    <span className="notification-badge">
+                      {unreadCount > 9 ? "9+" : unreadCount}
+                    </span>
                   )}
                 </button>
-
                 {showNotifications && (
                   <div ref={notificationDropdownRef} className="notification-dropdown">
                     <div className="notification-header">
@@ -297,27 +276,19 @@ export const Navbar = () => {
                 )}
               </div>
 
-              <div className="user-avatar-dropdown" style={{ marginLeft: "10px" }}>
-                <div style={{ position: "relative" }}>
+              {/* User Avatar and Dropdown */}
+              <div className="user-avatar-dropdown">
+                <div className="avatar-container">
                   {user?.photos?.length > 0 ? (
                     <img
-                      src={user.photos[0].url || "/placeholder.svg?height=32&width=32"}
+                      src={user.photos[0].url || "/placeholder.svg"}
                       alt={user.nickname}
                       className="user-avatar"
-                      style={{ width: "32px", height: "32px" }}
                       onClick={toggleUserDropdown}
                     />
                   ) : (
-                    <FaUserCircle
-                      style={{
-                        fontSize: "32px",
-                        cursor: "pointer",
-                        color: "var(--text-color)",
-                      }}
-                      onClick={toggleUserDropdown}
-                    />
+                    <FaUserCircle className="user-avatar-icon" onClick={toggleUserDropdown} />
                   )}
-
                   {showUserDropdown && (
                     <div ref={userDropdownRef} className="user-dropdown">
                       <div className="user-dropdown-item" onClick={navigateToProfile}>
@@ -350,184 +321,66 @@ export const Navbar = () => {
           )}
         </div>
       </div>
-
-      {/* Custom styles for notification specific elements */}
-      <style jsx="true">{`
-        .notification-specific-button {
-          background: var(--primary-color, #ff3366);
-          border: none;
-          cursor: pointer;
-          padding: 0.6rem;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-          width: 40px;
-          height: 40px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-          z-index: 101;
-          transition: all 0.3s ease;
-          pointer-events: auto;
-          color: white;
-          outline: none;
-        }
-
-        .notification-specific-button:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-        }
-
-        .notification-specific-button:active {
-          transform: translateY(0);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        }
-
-        .notification-dropdown {
-          z-index: 1050;
-          display: block;
-          visibility: visible;
-          opacity: 1;
-          position: absolute;
-          right: 0;
-          top: 100%;
-          width: 320px;
-          max-height: 400px;
-          overflow-y: auto;
-        }
-        
-        .notification-empty {
-          padding: 20px;
-          text-align: center;
-          color: var(--text-light);
-        }
-        
-        .notification-list {
-          max-height: 300px;
-          overflow-y: auto;
-        }
-
-        .notification-item {
-          padding: 12px 16px;
-          border-bottom: 1px solid var(--border-color);
-          display: flex;
-          align-items: flex-start;
-          cursor: pointer;
-          transition: background-color 0.2s ease;
-        }
-
-        .notification-item:hover {
-          background-color: var(--bg-light);
-        }
-
-        .notification-item.unread {
-          background-color: var(--bg-unread);
-        }
-
-        .mt-3 {
-          margin-top: 12px;
-        }
-
-        .btn-sm {
-          padding: 4px 12px;
-          font-size: 0.875rem;
-        }
-
-        .spinner {
-          display: inline-block;
-          width: 24px;
-          height: 24px;
-          border: 2px solid rgba(0, 0, 0, 0.1);
-          border-radius: 50%;
-          border-top-color: var(--primary);
-          animation: spin 1s linear infinite;
-        }
-
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-
-        @keyframes notification-pulse {
-          0% {
-            transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(255, 51, 102, 0.7);
-          }
-          
-          70% {
-            transform: scale(1.1);
-            box-shadow: 0 0 0 10px rgba(255, 51, 102, 0);
-          }
-          
-          100% {
-            transform: scale(1);
-            box-shadow: 0 0 0 0 rgba(255, 51, 102, 0);
-          }
-        }
-
-        .notification-pulse {
-          animation: notification-pulse 1s cubic-bezier(0.66, 0, 0, 1) 2;
-        }
-      `}</style>
     </header>
-  )
-}
+  );
+};
 
-// Modern Alert Component
+/**
+ * Alert Component
+ *
+ * Displays an alert message with optional action buttons.
+ * If the type is "toast", it triggers a toast notification.
+ */
 export const Alert = ({ type, message, onClose, actions }) => {
-  // Auto-close alert after 5 seconds
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (onClose) onClose()
-    }, 5000)
-    return () => clearTimeout(timer)
-  }, [onClose])
+      onClose && onClose();
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [onClose]);
 
-  // Ensure message is a string
   const formatMessage = (msg) => {
-    if (msg === null || msg === undefined) return ""
-    if (typeof msg === "string") return msg
+    if (msg == null) return "";
+    if (typeof msg === "string") return msg;
     if (typeof msg === "object") {
-      if (msg.message) return msg.message
-      if (msg.text) return msg.text
+      if (msg.message) return msg.message;
+      if (msg.text) return msg.text;
       try {
-        return JSON.stringify(msg)
+        return JSON.stringify(msg);
       } catch (e) {
-        return "An error occurred"
+        return "An error occurred";
       }
     }
-    return String(msg)
-  }
+    return String(msg);
+  };
 
-  // If type is "toast", show a toast and return null
   useEffect(() => {
     if (type === "toast") {
       try {
         if (typeof message === "object" && message !== null) {
-          const toastType = message.type || "info"
-          const toastMessage = message.text || formatMessage(message)
-          toast[toastType](toastMessage)
+          const toastType = message.type || "info";
+          const toastMessage = message.text || formatMessage(message);
+          toast[toastType](toastMessage);
         } else {
-          toast.info(formatMessage(message))
+          toast.info(formatMessage(message));
         }
-        if (onClose) onClose()
+        onClose && onClose();
       } catch (e) {
-        console.error("Error showing toast:", e)
-        toast.info("Notification")
+        console.error("Error showing toast:", e);
+        toast.info("Notification");
       }
     }
-  }, [type, message, onClose])
+  }, [type, message, onClose]);
 
-  if (type === "toast") return null
+  if (type === "toast") return null;
 
-  // Map alert types to classes and icons
   const alertClasses = {
     success: "alert-success",
     warning: "alert-warning",
     danger: "alert-danger",
     info: "alert-info",
     primary: "alert-primary",
-  }
+  };
 
   const alertIcons = {
     success: <span className="alert-icon success"></span>,
@@ -535,7 +388,7 @@ export const Alert = ({ type, message, onClose, actions }) => {
     danger: <FaExclamationTriangle className="alert-icon danger" />,
     info: <span className="alert-icon info"></span>,
     primary: <span className="alert-icon primary"></span>,
-  }
+  };
 
   return (
     <div className={`alert ${alertClasses[type] || "alert-primary"}`}>
@@ -544,11 +397,7 @@ export const Alert = ({ type, message, onClose, actions }) => {
       {actions && (
         <div className="alert-actions">
           {actions.map((action, index) => (
-            <button
-              key={index}
-              className={`btn btn-sm ${action.type ? `btn-${action.type}` : "btn-primary"}`}
-              onClick={action.action}
-            >
+            <button key={index} className={`btn btn-sm ${action.type ? `btn-${action.type}` : "btn-primary"}`} onClick={action.action}>
               {action.label}
             </button>
           ))}
@@ -560,22 +409,27 @@ export const Alert = ({ type, message, onClose, actions }) => {
         </button>
       )}
     </div>
-  )
-}
+  );
+};
 
-// Private Route Component
+/**
+ * PrivateRoute Component
+ *
+ * Protects routes by ensuring that the user is authenticated.
+ * If the user is not authenticated, it redirects to the login page.
+ */
 export const PrivateRoute = ({ children }) => {
-  const { isAuthenticated, loading, error } = useAuth()
-  const navigate = useNavigate()
+  const { isAuthenticated, loading, error } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (!loading && !isAuthenticated) {
       navigate("/login", {
         replace: true,
         state: { from: window.location.pathname },
-      })
+      });
     }
-  }, [isAuthenticated, loading, navigate])
+  }, [isAuthenticated, loading, navigate]);
 
   if (loading) {
     return (
@@ -583,15 +437,12 @@ export const PrivateRoute = ({ children }) => {
         <div className="spinner spinner-dark"></div>
         <p className="loading-text">Loading...</p>
       </div>
-    )
+    );
   }
 
   if (error) {
     const errorMessage =
-      typeof error === "object" && error !== null
-        ? error.message || JSON.stringify(error)
-        : String(error || "Authentication error")
-
+      typeof error === "object" && error !== null ? error.message || JSON.stringify(error) : String(error || "Authentication error");
     return (
       <div className="auth-error">
         <div className="auth-error-content">
@@ -603,8 +454,14 @@ export const PrivateRoute = ({ children }) => {
           </button>
         </div>
       </div>
-    )
+    );
   }
 
-  return isAuthenticated ? children : null
-}
+  return isAuthenticated ? children : null;
+};
+
+export default {
+  Navbar,
+  Alert,
+  PrivateRoute,
+};

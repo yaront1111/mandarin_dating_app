@@ -425,6 +425,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   };
 
   const handleVideoCall = () => {
+    console.log("Video call button clicked", recipient);
     if (user?.accountTier === "FREE") {
       return toast.error("Free accounts cannot make video calls. Upgrade for video calls.");
     }
@@ -435,6 +436,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       toast.error("Cannot start call: recipient information is missing");
     }
   };
+
 
   const isTyping =
     recipient &&

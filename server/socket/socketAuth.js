@@ -155,7 +155,7 @@ const checkSocketPermission = (socket, permission) => {
       return socket.user.canSendMessages ? socket.user.canSendMessages() : true;
     case "createStory":
       return socket.user.canCreateStory ? socket.user.canCreateStory() : true;
-    case "initiateCall":
+    case "initiateVideoCall":
       // Users can always initiate calls, even free users
       return true;
     default:

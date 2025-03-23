@@ -1,21 +1,27 @@
-"use client"
+"use client";
 
-import { useState, useEffect, useRef } from "react"
-import { toast } from "react-toastify"
-import { FaPaperPlane, FaPaperclip, FaTimes, FaSpinner } from "react-icons/fa"
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { toast } from "react-toastify";
+import {
+  FaPaperPlane,
+  FaPaperclip,
+  FaTimes,
+  FaSpinner,
+} from "react-icons/fa";
 
-import { useAuth } from "../context/AuthContext"
-import { useChat } from "../context/ChatContext"
-import MessageBubble from "../components/MessageBubble"
-import UserAvatar from "../components/UserAvatar"
+import { useAuth } from "../context/AuthContext";
+import { useChat } from "../context/ChatContext";
+import MessageBubble from "../components/MessageBubble"; // Ensure this component exists
+import UserAvatar from "../components/UserAvatar";
 
+// Component to list conversations in a sidebar
 const ConversationList = ({ conversations, activeId, onSelect, unreadCounts }) => {
   if (!conversations || conversations.length === 0) {
     return (
       <div className="no-conversations">
         <p>No conversations yet</p>
       </div>
-    )
+    );
   }
 
   return (
@@ -23,7 +29,9 @@ const ConversationList = ({ conversations, activeId, onSelect, unreadCounts }) =
       {conversations.map((conv) => (
         <div
           key={conv.user._id}
-          className={`conversation-item ${activeId === conv.user._id ? "active" : ""}`}
+          className={`conversation-item ${
+            activeId === conv.user._id ? "active" : ""
+          }`}
           onClick={() => onSelect(conv.user._id)}
         >
           <div className="conversation-avatar">
@@ -32,10 +40,15 @@ const ConversationList = ({ conversations, activeId, onSelect, unreadCounts }) =
           </div>
           <div className="conversation-details">
             <div className="conversation-header">
-              <h4 className="conversation-name">{conv.user.nickname || "User"}</h4>
+              <h4 className="conversation-name">
+                {conv.user.nickname || "User"}
+              </h4>
               <span className="conversation-time">
                 {conv.lastMessage &&
-                  new Date(conv.lastMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  new Date(conv.lastMessage.createdAt).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
               </span>
             </div>
             <div className="conversation-preview">
@@ -44,23 +57,28 @@ const ConversationList = ({ conversations, activeId, onSelect, unreadCounts }) =
                   {conv.lastMessage.type === "text"
                     ? conv.lastMessage.content
                     : conv.lastMessage.type === "file"
-                      ? "📎 Attachment"
-                      : conv.lastMessage.type === "wink"
-                        ? "😉 Wink"
-                        : "Message"}
+                    ? "📎 Attachment"
+                    : conv.lastMessage.type === "wink"
+                    ? "😉 Wink"
+                    : "Message"}
                 </p>
               )}
-              {unreadCounts[conv.user._id] > 0 && <span className="unread-badge">{unreadCounts[conv.user._id]}</span>}
+              {unreadCounts[conv.user._id] > 0 && (
+                <span className="unread-badge">
+                  {unreadCounts[conv.user._id]}
+                </span>
+              )}
             </div>
           </div>
         </div>
       ))}
     </div>
-  )
-}
+  );
+};
 
+// Main Messages page component
 const Messages = () => {
-  const { user } = useAuth()
+  const { user } = useAuth();
   const {
     messages,
     conversations,
@@ -78,157 +96,149 @@ const Messages = () => {
     sendTyping,
     markMessagesAsRead,
     setActiveConversation,
-  } = useChat()
+  } = useChat();
 
-  const [messageText, setMessageText] = useState("")
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [uploadProgress, setUploadProgress] = useState(0)
-  const messagesEndRef = useRef(null)
-  const fileInputRef = useRef(null)
-  const typingTimeoutRef = useRef(null)
+  const [messageText, setMessageText] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
-  // Get active conversation user
-  const activeUser = conversations.find((conv) => conv.user && conv.user._id === activeConversation)?.user
+  // Determine the active user from the conversation list.
+  const activeUser = conversations.find(
+    (conv) => conv.user && conv.user._id === activeConversation
+  )?.user;
 
-  // Load conversations on mount
+  // Load conversations on mount.
   useEffect(() => {
     if (user && user._id) {
-      // Validate user ID format
       if (!/^[0-9a-fA-F]{24}$/.test(user._id)) {
-        console.error(`Invalid user ID format: ${user._id}`)
-        toast.error("Authentication error. Please log out and log in again.")
-        return
+        console.error(`Invalid user ID format: ${user._id}`);
+        toast.error("Authentication error. Please log out and log in again.");
+        return;
       }
-
       getConversations().catch((err) => {
-        console.error("Failed to load conversations:", err)
-        toast.error("Failed to load conversations. Please try again.")
-      })
-    } else if (!user) {
-      // Handle case when user is not authenticated
-      console.warn("User is not authenticated. Redirecting to login...")
-      // You might want to redirect to login page here
+        console.error("Failed to load conversations:", err);
+        toast.error("Failed to load conversations. Please try again.");
+      });
     }
-  }, [user, getConversations])
+  }, [user, getConversations]);
 
-  // Load messages when active conversation changes
+  // Load messages when active conversation changes.
   useEffect(() => {
     if (activeConversation && user && user._id) {
       getMessages(activeConversation).catch((err) => {
-        console.error("Failed to load messages:", err)
-      })
-
-      // Mark messages as read
-      const unreadMessages = messages.filter((m) => m.sender === activeConversation && !m.read).map((m) => m._id)
-
+        console.error("Failed to load messages:", err);
+      });
+      const unreadMessages = messages
+        .filter((m) => m.sender === activeConversation && !m.read)
+        .map((m) => m._id);
       if (unreadMessages.length > 0) {
-        markMessagesAsRead(unreadMessages, activeConversation)
+        markMessagesAsRead(unreadMessages, activeConversation);
       }
     }
-  }, [activeConversation, user, getMessages, messages, markMessagesAsRead])
+  }, [activeConversation, user, getMessages, messages, markMessagesAsRead]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom when messages change.
   useEffect(() => {
-    scrollToBottom()
-  }, [messages])
+    scrollToBottom();
+  }, [messages]);
 
-  // Cleanup typing timeout
+  // Clean up typing timeout on unmount.
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
+        clearTimeout(typingTimeoutRef.current);
       }
-    }
-  }, [])
+    };
+  }, []);
 
+  // Scroll helper function.
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
+  // Handle conversation selection.
   const handleSelectConversation = (userId) => {
     if (!userId || !/^[0-9a-fA-F]{24}$/.test(userId)) {
-      console.error(`Invalid recipient ID format: ${userId}`)
-      toast.error("Invalid conversation selected")
-      return
+      console.error(`Invalid recipient ID format: ${userId}`);
+      toast.error("Invalid conversation selected");
+      return;
     }
-
     if (userId !== activeConversation) {
-      setActiveConversation(userId)
+      setActiveConversation(userId);
     }
-  }
+  };
 
+  // Send text message handler.
   const handleSendMessage = async (e) => {
-    e.preventDefault()
-
+    e.preventDefault();
     if (selectedFile) {
-      await handleSendFile()
-      return
+      await handleSendFile();
+      return;
     }
-
-    if (!messageText.trim() || !activeConversation) return
-
+    if (!messageText.trim() || !activeConversation) return;
     try {
-      await sendMessage(activeConversation, "text", messageText.trim())
-      setMessageText("")
+      await sendMessage(activeConversation, "text", messageText.trim());
+      setMessageText("");
     } catch (error) {
-      console.error("Failed to send message:", error)
-      toast.error("Failed to send message")
+      console.error("Failed to send message:", error);
+      toast.error("Failed to send message");
     }
-  }
+  };
 
+  // File input change handler.
   const handleFileSelect = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    // Validate file size (5MB max)
+    const file = e.target.files?.[0];
+    if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("File is too large. Maximum size is 5MB.")
-      if (fileInputRef.current) fileInputRef.current.value = ""
-      return
+      toast.error("File is too large. Maximum size is 5MB.");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
     }
+    setSelectedFile(file);
+  };
 
-    setSelectedFile(file)
-  }
-
+  // Send file message handler.
   const handleSendFile = async () => {
-    if (!selectedFile || !activeConversation) return
-
+    if (!selectedFile || !activeConversation) return;
     try {
       await sendFileMessage(activeConversation, selectedFile, (progress) => {
-        setUploadProgress(progress)
-      })
-
-      setSelectedFile(null)
-      setUploadProgress(0)
-      if (fileInputRef.current) fileInputRef.current.value = ""
+        setUploadProgress(progress);
+      });
+      setSelectedFile(null);
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     } catch (error) {
-      console.error("Failed to send file:", error)
-      toast.error("Failed to send file")
+      console.error("Failed to send file:", error);
+      toast.error("Failed to send file");
     }
-  }
+  };
 
+  // Cancel file upload handler.
   const handleCancelFileUpload = () => {
-    setSelectedFile(null)
-    setUploadProgress(0)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }
+    setSelectedFile(null);
+    setUploadProgress(0);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
+  // Handle typing events.
   const handleTyping = () => {
-    if (!activeConversation) return
-
+    if (!activeConversation) return;
     if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current)
+      clearTimeout(typingTimeoutRef.current);
     }
-
-    sendTyping(activeConversation)
-
+    sendTyping(activeConversation);
     typingTimeoutRef.current = setTimeout(() => {
-      typingTimeoutRef.current = null
-    }, 3000)
-  }
+      typingTimeoutRef.current = null;
+    }, 3000);
+  };
 
   const isUserTyping =
-    activeConversation && typingUsers[activeConversation] && Date.now() - typingUsers[activeConversation] < 3000
+    activeConversation &&
+    typingUsers[activeConversation] &&
+    Date.now() - typingUsers[activeConversation] < 3000;
 
   return (
     <div className="messages-page">
@@ -271,7 +281,11 @@ const Messages = () => {
               ) : (
                 <div className="messages-list">
                   {messages.map((message) => (
-                    <MessageBubble key={message._id} message={message} isOwn={message.sender === user?._id} />
+                    <MessageBubble
+                      key={message._id}
+                      message={message}
+                      isOwn={message.sender === user?._id}
+                    />
                   ))}
                   <div ref={messagesEndRef} />
                 </div>
@@ -283,15 +297,23 @@ const Messages = () => {
                 <div className="selected-file">
                   <div className="file-info">
                     <span className="file-name">{selectedFile.name}</span>
-                    <span className="file-size">({Math.round(selectedFile.size / 1024)} KB)</span>
+                    <span className="file-size">
+                      ({Math.round(selectedFile.size / 1024)} KB)
+                    </span>
                   </div>
                   {uploading ? (
                     <div className="upload-progress">
-                      <div className="progress-bar" style={{ width: `${uploadProgress}%` }}></div>
+                      <div
+                        className="progress-bar"
+                        style={{ width: `${uploadProgress}%` }}
+                      ></div>
                       <span>{uploadProgress}%</span>
                     </div>
                   ) : (
-                    <button className="cancel-file" onClick={handleCancelFileUpload}>
+                    <button
+                      className="cancel-file"
+                      onClick={handleCancelFileUpload}
+                    >
                       <FaTimes />
                     </button>
                   )}
@@ -307,31 +329,32 @@ const Messages = () => {
                 >
                   <FaPaperclip />
                 </button>
-
                 <input
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileSelect}
-                  style={{ display: "none" }}
+                  className="file-input"
                   accept="image/*,application/pdf,text/plain,audio/*,video/*"
                 />
-
                 <input
                   type="text"
                   value={messageText}
                   onChange={(e) => setMessageText(e.target.value)}
-                  onKeyDown={() => handleTyping()}
+                  onKeyDown={handleTyping}
                   placeholder="Type a message..."
                   className="message-input"
                   disabled={sending || uploading || !!selectedFile}
                 />
-
                 <button
                   type="submit"
                   className="send-button"
                   disabled={(!messageText.trim() && !selectedFile) || sending || uploading}
                 >
-                  {sending || uploading ? <FaSpinner className="spinner" /> : <FaPaperPlane />}
+                  {sending || uploading ? (
+                    <FaSpinner className="spinner" />
+                  ) : (
+                    <FaPaperPlane />
+                  )}
                 </button>
               </form>
             </div>
@@ -346,7 +369,7 @@ const Messages = () => {
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default Messages
+export default Messages;

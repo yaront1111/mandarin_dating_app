@@ -1,100 +1,81 @@
+// client/src/services/socketService.jsx
 import { io } from "socket.io-client";
 import { getToken } from "../utils/tokenStorage";
 import { toast } from "react-toastify";
 
-/**
- * SocketService
- *
- * This service provides a full-featured, production-level Socket.IO
- * implementation with robust connection handling, heartbeat, pending
- * message queueing, reconnection logic, error recovery, and support for
- * messaging and video call functionalities.
- *
- * Environment variables are read via Vite's import.meta.env.
- */
+// --- Constants for Timeouts and Intervals ---
+const CONNECTION_TIMEOUT = 20000; // 20 seconds for initial connection timeout
+const HEARTBEAT_INTERVAL_MS = 30000; // send a ping every 30 seconds
+const HEARTBEAT_TIMEOUT_MS = 60000; // if no pong received in 60 seconds, reconnect
+const FORCE_RECONNECT_INTERVAL_MS = 30 * 60 * 1000; // force reconnect every 30 minutes
+const CALL_TIMEOUT_MS = 15000; // 15 seconds timeout for call events
+const MESSAGE_TIMEOUT_MS = 10000; // 10 seconds timeout for sending messages
+const MAX_RECONNECT_ATTEMPTS = 10;
+const INITIAL_RECONNECT_DELAY = 5000;
+
 class SocketService {
   constructor() {
-    // Core socket state
+    // Core state variables
     this.socket = null;
     this.userId = null;
     this.token = null;
     this.isConnecting = false;
     this.connected = false;
     this.initialized = false;
-
-    // Reconnection settings
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 10;
-    this.reconnectDelay = 5000;
+
+    // Timeouts and intervals
     this.connectionTimeout = null;
     this.connectionLostTimeout = null;
     this.forceReconnectTimeout = null;
-
-    // Heartbeat settings
     this.heartbeatInterval = null;
     this.lastHeartbeat = null;
 
-    // Message queues for pending messages (when disconnected)
+    // Message queues for pending operations
     this.pendingMessages = [];
     this.messageQueue = [];
 
-    // Custom event listeners (for non-socket events)
+    // Event handlers for cleanup
     this.eventHandlers = {};
-    this.listeners = new Map();
 
-    // Toast display and abort controller for cancellations
+    // Toast notification flag
     this.showConnectionToasts = false;
+
+    // Abort controller for cancellation if needed
     this.abortController = null;
 
-    // Determine server URL: use VITE_SOCKET_URL if defined; otherwise, use localhost or origin.
+    // Determine server URL using environment variable or fallback
     this.serverUrl =
       import.meta.env.VITE_SOCKET_URL ||
       (window.location.hostname.includes("localhost")
         ? `http://${window.location.hostname}:5000`
         : window.location.origin);
 
-    // Use Vite's environment variable (import.meta.env.MODE) instead of process.env.NODE_ENV
+    // Enable debug logging in non-production modes
     this.debugMode = import.meta.env.MODE !== "production";
   }
 
-  // ----------------------
-  // Logging Utilities
-  // ----------------------
+  // --- Logging Utilities ---
   _log(...args) {
-    if (this.debugMode) {
-      console.log("[SocketService]", ...args);
-    }
+    if (this.debugMode) console.log("[SocketService]", ...args);
   }
 
   _error(...args) {
     console.error("[SocketService]", ...args);
   }
 
-  // ----------------------
-  // Initialization / Connection
-  // ----------------------
+  // --- Initialization ---
   /**
-   * Initialize socket connection with a given userId and token.
-   * Sets up the connection options, event handlers, and browser listeners.
-   *
-   * @param {string} userId - User ID.
-   * @param {string} token - Authentication token.
+   * Initialize the socket connection with the provided userId and token.
    */
   init(userId, token) {
     if (this.isConnecting) return;
-
-    // Set up credentials and connection state
     this.userId = userId;
     this.token = token;
     this.isConnecting = true;
     this.abortController = new AbortController();
+    if (this.connectionTimeout) clearTimeout(this.connectionTimeout);
 
-    // Clear any existing connection timeout
-    if (this.connectionTimeout) {
-      clearTimeout(this.connectionTimeout);
-    }
-
-    // Set a timeout to detect connection delays
     this.connectionTimeout = setTimeout(() => {
       if (!this.socket || !this.socket.connected) {
         this._error("Socket connection timeout");
@@ -105,20 +86,18 @@ class SocketService {
           this._log("Network is offline, will retry when connection is available");
         }
       }
-    }, 20000);
+    }, CONNECTION_TIMEOUT);
 
     try {
       this._log("Initializing socket with userId:", userId);
       this._log("Socket server URL:", this.serverUrl);
-
-      // Create socket instance with options
       this.socket = io(this.serverUrl, {
         query: { token },
         auth: { token, userId },
         reconnection: true,
-        reconnectionAttempts: this.maxReconnectAttempts,
-        reconnectionDelay: this.reconnectDelay,
-        reconnectionDelayMax: 30000, // maximum 30 seconds delay
+        reconnectionAttempts: MAX_RECONNECT_ATTEMPTS,
+        reconnectionDelay: INITIAL_RECONNECT_DELAY,
+        reconnectionDelayMax: 30000,
         timeout: 30000,
         transports: ["websocket", "polling"],
         forceNew: true,
@@ -132,17 +111,10 @@ class SocketService {
         path: "/socket.io",
       });
 
-      this._log(
-        `Attempting socket connection to: ${this.serverUrl} with path: /socket.io`
-      );
-
-      // Set up socket event handlers
       this._setupEventHandlers();
-
-      // Set up periodic force reconnect (every 30 minutes)
       this._setupForceReconnect();
 
-      // Listen for browser events: online/offline and visibility change
+      // Listen to browser events for online/offline and visibility changes
       window.addEventListener("online", this._handleOnline);
       window.addEventListener("offline", this._handleOffline);
       document.addEventListener("visibilitychange", this._handleVisibilityChange);
@@ -153,9 +125,7 @@ class SocketService {
     }
   }
 
-  /**
-   * Set up all socket event handlers for connection, error, and custom events.
-   */
+  // --- Event Handlers Setup ---
   _setupEventHandlers() {
     if (!this.socket) return;
 
@@ -174,18 +144,16 @@ class SocketService {
         clearTimeout(this.connectionLostTimeout);
         this.connectionLostTimeout = null;
       }
-      // Start heartbeat and process any pending messages
       this._startHeartbeat();
       this._processPendingMessages();
       if (this.showConnectionToasts || this.reconnectAttempts > 0) {
         toast.success("Chat connection established");
       }
-      // Dispatch custom event for socket connected
       window.dispatchEvent(new CustomEvent("socketConnected"));
       this._setupForceReconnect();
     });
 
-    // Connection error handling
+    // Connection error
     this.socket.on("connect_error", (error) => {
       this._error("Socket connection error:", error);
       this.isConnecting = false;
@@ -194,13 +162,13 @@ class SocketService {
         this.connectionTimeout = null;
       }
       this.reconnectAttempts++;
-      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
         toast.error("Failed to connect to chat server. Please refresh the page.");
         window.dispatchEvent(new CustomEvent("socketConnectionFailed"));
       }
     });
 
-    // Disconnect events
+    // Handle disconnection
     this.socket.on("disconnect", (reason) => {
       this._log("Socket disconnected:", reason);
       this.connected = false;
@@ -209,9 +177,7 @@ class SocketService {
         this.connectionLostTimeout = setTimeout(() => {
           if (!this.socket || !this.socket.connected) {
             toast.warning("Chat connection lost. Attempting to reconnect...");
-            window.dispatchEvent(
-              new CustomEvent("socketDisconnected", { detail: { reason } })
-            );
+            window.dispatchEvent(new CustomEvent("socketDisconnected", { detail: { reason } }));
           }
         }, 5000);
       }
@@ -226,44 +192,39 @@ class SocketService {
       }
       toast.success("Chat connection restored");
       this._setupForceReconnect();
-      window.dispatchEvent(
-        new CustomEvent("socketReconnected", { detail: { attemptNumber } })
-      );
+      window.dispatchEvent(new CustomEvent("socketReconnected", { detail: { attemptNumber } }));
     });
-
     this.socket.on("reconnect_attempt", (attemptNumber) => {
       this._log(`Socket reconnect attempt ${attemptNumber}`);
     });
-
     this.socket.on("reconnect_error", (error) => {
       this._error("Socket reconnect error:", error);
     });
-
     this.socket.on("reconnect_failed", () => {
       this._error("Socket reconnect failed");
       toast.error("Failed to reconnect to chat server. Please refresh the page.");
       window.dispatchEvent(new CustomEvent("socketReconnectFailed"));
     });
 
-    // Server error event
+    // Handle server errors
     this.socket.on("error", (error) => {
       this._error("Socket server error:", error);
       toast.error(`Chat server error: ${error.message || "Unknown error"}`);
     });
 
-    // Heartbeat: update lastHeartbeat on pong
+    // Heartbeat mechanism using pong events
     this.socket.on("pong", () => {
       this.lastHeartbeat = Date.now();
     });
 
-    // Authentication error
+    // Handle authentication errors
     this.socket.on("auth_error", (error) => {
       this._error("Socket authentication error:", error);
       toast.error("Authentication failed. Please log in again.");
       window.dispatchEvent(new CustomEvent("authLogout"));
     });
 
-    // User status events
+    // User status events (online/offline)
     this.socket.on("userOnline", (data) => {
       window.dispatchEvent(
         new CustomEvent("userStatusChanged", {
@@ -280,13 +241,7 @@ class SocketService {
     });
   }
 
-  // ----------------------
-  // Heartbeat & Force-Reconnect
-  // ----------------------
-  /**
-   * Start a heartbeat interval that emits a "ping" every 30 seconds.
-   * If no "pong" is received within 60 seconds, triggers a reconnect.
-   */
+  // --- Heartbeat and Force Reconnect ---
   _startHeartbeat() {
     this._stopHeartbeat();
     this.lastHeartbeat = Date.now();
@@ -294,12 +249,12 @@ class SocketService {
       if (this.socket && this.socket.connected) {
         this.socket.emit("ping");
         const now = Date.now();
-        if (this.lastHeartbeat && now - this.lastHeartbeat > 60000) {
-          this._log("No heartbeat received for 60 seconds, reconnecting...");
+        if (this.lastHeartbeat && now - this.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+          this._log("No heartbeat received within threshold, reconnecting...");
           this.reconnect();
         }
       }
-    }, 30000);
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   _stopHeartbeat() {
@@ -309,28 +264,17 @@ class SocketService {
     }
   }
 
-  /**
-   * Schedule a force reconnect every 30 minutes to refresh the connection.
-   */
   _setupForceReconnect() {
-    if (this.forceReconnectTimeout) {
-      clearTimeout(this.forceReconnectTimeout);
-    }
+    if (this.forceReconnectTimeout) clearTimeout(this.forceReconnectTimeout);
     this.forceReconnectTimeout = setTimeout(() => {
-      this._log("Performing scheduled reconnection to refresh socket connection");
+      this._log("Scheduled reconnection to refresh socket connection");
       this.reconnect();
-    }, 30 * 60 * 1000);
+    }, FORCE_RECONNECT_INTERVAL_MS);
   }
 
-  // ----------------------
-  // Message Queue & Emission
-  // ----------------------
-  /**
-   * Process pending messages that were queued while disconnected.
-   */
+  // --- Process Pending Messages ---
   _processPendingMessages() {
-    if (!this.socket || !this.socket.connected || this.pendingMessages.length === 0)
-      return;
+    if (!this.socket || !this.socket.connected || this.pendingMessages.length === 0) return;
     this._log(`Processing ${this.pendingMessages.length} pending messages`);
     const messages = [...this.pendingMessages];
     this.pendingMessages = [];
@@ -339,14 +283,7 @@ class SocketService {
     });
   }
 
-  /**
-   * Emit an event to the server.
-   * If not connected, queues the event.
-   *
-   * @param {string} event - Event name.
-   * @param {object} data - Event data.
-   * @returns {boolean} - True if emitted or queued.
-   */
+  // --- Emit and Listener Helpers ---
   emit(event, data = {}) {
     if (!this.socket) {
       this._log(`Socket not initialized, cannot emit '${event}'`);
@@ -361,266 +298,26 @@ class SocketService {
     return true;
   }
 
-  // ----------------------
-  // Custom Event Listeners
-  // ----------------------
-  /**
-   * Register an event listener.
-   *
-   * @param {string} event - Event name.
-   * @param {Function} callback - Callback function.
-   * @returns {Function} - Unsubscribe function.
-   */
   on(event, callback) {
     if (!this.socket) {
       this._log(`Socket not initialized, cannot add listener for '${event}'`);
       return () => {};
     }
     this.socket.on(event, callback);
-    if (!this.eventHandlers[event]) {
-      this.eventHandlers[event] = [];
-    }
+    if (!this.eventHandlers[event]) this.eventHandlers[event] = [];
     this.eventHandlers[event].push(callback);
     return callback;
   }
 
-  /**
-   * Remove an event listener.
-   *
-   * @param {string} event - Event name.
-   * @param {Function} callback - Callback function.
-   */
   off(event, callback) {
     if (!this.socket || !callback) return;
     this.socket.off(event, callback);
     if (this.eventHandlers[event]) {
-      this.eventHandlers[event] = this.eventHandlers[event].filter(
-        (handler) => handler !== callback
-      );
+      this.eventHandlers[event] = this.eventHandlers[event].filter((handler) => handler !== callback);
     }
   }
 
-  /**
-   * Notify all registered custom listeners for an event.
-   *
-   * @param {string} event - Event name.
-   * @param {any} data - Event data.
-   */
-  _notifyListeners(event, data) {
-    const listeners = this.listeners.get(event);
-    if (listeners) {
-      listeners.forEach((callback) => {
-        try {
-          callback(data);
-        } catch (error) {
-          this._error(`Error in '${event}' listener:`, error);
-        }
-      });
-    }
-  }
-
-  // ----------------------
-  // Messaging & Calling
-  // ----------------------
-  /**
-   * Send a message to a user.
-   * If not connected, the message is queued and a temporary message is returned.
-   *
-   * @param {string} recipientId - Recipient user ID.
-   * @param {string} type - Message type (e.g. "text").
-   * @param {string} content - Message content.
-   * @param {object} metadata - Additional metadata.
-   * @returns {Promise<object>} - Resolves with the message data.
-   */
-  async sendMessage(recipientId, type, content, metadata = {}) {
-    return new Promise((resolve, reject) => {
-      const tempMessageId = `temp-${Date.now()}-${Math.random()
-        .toString(36)
-        .substr(2, 9)}`;
-
-      if (!this.socket || !this.socket.connected) {
-        this._log("Socket not connected, queueing message and attempting to reconnect...");
-        const tempMessage = {
-          _id: tempMessageId,
-          sender: this.userId,
-          recipient: recipientId,
-          type,
-          content,
-          metadata,
-          createdAt: new Date().toISOString(),
-          read: false,
-          pending: true,
-        };
-        this.pendingMessages.push({
-          event: "sendMessage",
-          data: { recipientId, type, content, metadata, tempMessageId },
-        });
-        if (this.userId && this.token) {
-          this.reconnect();
-        }
-        return resolve(tempMessage);
-      }
-
-      if (!recipientId || !type) {
-        return reject(new Error("Invalid message parameters"));
-      }
-      if (!/^[0-9a-fA-F]{24}$/.test(recipientId)) {
-        return reject(new Error(`Invalid recipient ID format: ${recipientId}`));
-      }
-
-      const timeout = setTimeout(() => {
-        this.socket.off("messageSent", handleMessageSent);
-        this.socket.off("messageError", handleMessageError);
-        const tempMessage = {
-          _id: tempMessageId,
-          sender: this.userId,
-          recipient: recipientId,
-          type,
-          content,
-          metadata,
-          createdAt: new Date().toISOString(),
-          read: false,
-          pending: true,
-        };
-        this.pendingMessages.push({
-          event: "sendMessage",
-          data: { recipientId, type, content, metadata, tempMessageId },
-        });
-        resolve(tempMessage);
-        this._log("Message send timeout, queued for retry");
-      }, 10000);
-
-      const handleMessageSent = (data) => {
-        if (data.tempMessageId === tempMessageId) {
-          this.socket.off("messageSent", handleMessageSent);
-          this.socket.off("messageError", handleMessageError);
-          resolve(data);
-        }
-      };
-
-      const handleMessageError = (error) => {
-        if (error.tempMessageId === tempMessageId) {
-          this.socket.off("messageSent", handleMessageSent);
-          this.socket.off("messageError", handleMessageError);
-          reject(new Error(error.message || "Failed to send message"));
-        }
-      };
-
-      this.socket.once("messageSent", handleMessageSent);
-      this.socket.once("messageError", handleMessageError);
-      this.socket.emit("sendMessage", {
-        recipientId,
-        type,
-        content,
-        metadata,
-        tempMessageId,
-      });
-    });
-  }
-
-  /**
-   * Send a typing indicator to a user.
-   *
-   * @param {string} recipientId - Recipient user ID.
-   */
-  sendTyping(recipientId) {
-    if (!this.socket || !this.socket.connected) return;
-    if (!recipientId || !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
-      this._error(`Invalid recipient ID format for typing: ${recipientId}`);
-      return;
-    }
-    this.socket.emit("typing", { recipientId });
-  }
-
-  /**
-   * Initiate a video call with a user.
-   *
-   * @param {string} recipientId - Recipient user ID.
-   * @returns {Promise<object>} - Resolves with call data.
-   */
-  initiateVideoCall(recipientId) {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        return reject(new Error("Socket not connected"));
-      }
-      if (!recipientId || !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
-        return reject(new Error(`Invalid recipient ID format: ${recipientId}`));
-      }
-      const timeout = setTimeout(() => {
-        this.socket.off("callInitiated", handleCallInitiated);
-        this.socket.off("callError", handleCallError);
-        reject(new Error("Call initiation timeout"));
-      }, 15000);
-
-      const handleCallInitiated = (callData) => {
-        clearTimeout(timeout);
-        this.socket.off("callInitiated", handleCallInitiated);
-        this.socket.off("callError", handleCallError);
-        resolve(callData);
-      };
-
-      const handleCallError = (error) => {
-        clearTimeout(timeout);
-        this.socket.off("callInitiated", handleCallInitiated);
-        this.socket.off("callError", handleCallError);
-        reject(new Error(error.message || "Failed to initiate call"));
-      };
-
-      this.socket.once("callInitiated", handleCallInitiated);
-      this.socket.once("callError", handleCallError);
-      this.socket.emit("initiateCall", { recipientId });
-    });
-  }
-
-  /**
-   * Answer an incoming video call.
-   *
-   * @param {string} callerId - Caller user ID.
-   * @param {boolean} accept - Whether to accept the call.
-   * @returns {Promise<object>} - Resolves with call data.
-   */
-  answerVideoCall(callerId, accept = true) {
-    return new Promise((resolve, reject) => {
-      if (!this.socket || !this.socket.connected) {
-        return reject(new Error("Socket not connected"));
-      }
-      if (!callerId || !/^[0-9a-fA-F]{24}$/.test(callerId)) {
-        return reject(new Error(`Invalid caller ID format: ${callerId}`));
-      }
-      const timeout = setTimeout(() => {
-        this.socket.off("callAnswered", handleCallAnswered);
-        this.socket.off("callError", handleCallError);
-        reject(new Error("Call answer timeout"));
-      }, 15000);
-
-      const handleCallAnswered = (callData) => {
-        clearTimeout(timeout);
-        this.socket.off("callAnswered", handleCallAnswered);
-        this.socket.off("callError", handleCallError);
-        resolve(callData);
-      };
-
-      const handleCallError = (error) => {
-        clearTimeout(timeout);
-        this.socket.off("callAnswered", handleCallAnswered);
-        this.socket.off("callError", handleCallError);
-        reject(new Error(error.message || "Failed to answer call"));
-      };
-
-      this.socket.once("callAnswered", handleCallAnswered);
-      this.socket.once("callError", handleCallError);
-      this.socket.emit("answerCall", { callerId, accept });
-    });
-  }
-
-  // ----------------------
-  // Status & Disconnect
-  // ----------------------
-  /**
-   * Get connection status and details.
-   *
-   * @returns {object} - Status object.
-   */
+  // --- Connection Status Methods ---
   getStatus() {
     return {
       connected: this.socket?.connected || false,
@@ -634,18 +331,11 @@ class SocketService {
     };
   }
 
-  /**
-   * Check if the socket is currently connected.
-   *
-   * @returns {boolean} - True if connected.
-   */
   isConnected() {
     return this.socket && this.socket.connected;
   }
 
-  /**
-   * Disconnect the socket and clean up all listeners and intervals.
-   */
+  // --- Disconnect and Reconnect ---
   disconnect() {
     if (this.abortController) {
       this.abortController.abort();
@@ -683,14 +373,9 @@ class SocketService {
     this.lastHeartbeat = null;
   }
 
-  /**
-   * Force reconnection: disconnect and reinitialize.
-   *
-   * @returns {Promise} - Resolves when reconnected.
-   */
   reconnect() {
     if (this.isConnecting) {
-      this._log("Already attempting to connect, skipping reconnect");
+      this._log("Already attempting to reconnect, skipping");
       return;
     }
     if (this.socket) {
@@ -703,10 +388,7 @@ class SocketService {
     }
     this.isConnecting = false;
     this.reconnectAttempts = 0;
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
+    this._stopHeartbeat();
     if (this.connectionTimeout) {
       clearTimeout(this.connectionTimeout);
       this.connectionTimeout = null;
@@ -729,32 +411,174 @@ class SocketService {
     }
   }
 
-  /**
-   * Enable or disable connection toast notifications.
-   *
-   * @param {boolean} enable - True to enable toasts.
-   */
+  // --- Configuration Helpers ---
   setShowConnectionToasts(enable) {
     this.showConnectionToasts = enable;
   }
 
-  /**
-   * Enable or disable debug mode.
-   *
-   * @param {boolean} enable - True to enable debug logging.
-   */
   setDebugMode(enable) {
     this.debugMode = enable;
   }
 
-  // ----------------------
-  // Browser Event Handlers (bound via arrow functions)
-  // ----------------------
+  // --- Messaging Methods ---
+  /**
+   * Send a message to a recipient. If the socket isn’t connected,
+   * the message is queued and a temporary message object is returned.
+   */
+  sendMessage(recipientId, type, content, metadata = {}) {
+    return new Promise((resolve, reject) => {
+      const tempMessageId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      if (!this.socket || !this.socket.connected) {
+        this._log("Socket not connected, queueing message and attempting to reconnect...");
+        const tempMessage = {
+          _id: tempMessageId,
+          sender: this.userId,
+          recipient: recipientId,
+          type,
+          content,
+          metadata,
+          createdAt: new Date().toISOString(),
+          read: false,
+          pending: true,
+        };
+        this.pendingMessages.push({
+          event: "sendMessage",
+          data: { recipientId, type, content, metadata, tempMessageId },
+        });
+        if (this.userId && this.token) this.reconnect();
+        resolve(tempMessage);
+        return;
+      }
+      if (!recipientId || !type) return reject(new Error("Invalid message parameters"));
+      if (!/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+        return reject(new Error(`Invalid recipient ID format: ${recipientId}`));
+      }
+      const timeout = setTimeout(() => {
+        this.socket.off("messageSent", handleMessageSent);
+        this.socket.off("messageError", handleMessageError);
+        const tempMessage = {
+          _id: tempMessageId,
+          sender: this.userId,
+          recipient: recipientId,
+          type,
+          content,
+          metadata,
+          createdAt: new Date().toISOString(),
+          read: false,
+          pending: true,
+        };
+        this.pendingMessages.push({
+          event: "sendMessage",
+          data: { recipientId, type, content, metadata, tempMessageId },
+        });
+        resolve(tempMessage);
+        this._log("Message send timeout, queued for retry");
+      }, MESSAGE_TIMEOUT_MS);
+
+      const handleMessageSent = (data) => {
+        if (data.tempMessageId === tempMessageId) {
+          this.socket.off("messageSent", handleMessageSent);
+          this.socket.off("messageError", handleMessageError);
+          resolve(data);
+        }
+      };
+      const handleMessageError = (error) => {
+        if (error.tempMessageId === tempMessageId) {
+          this.socket.off("messageSent", handleMessageSent);
+          this.socket.off("messageError", handleMessageError);
+          reject(new Error(error.message || "Failed to send message"));
+        }
+      };
+      this.socket.once("messageSent", handleMessageSent);
+      this.socket.once("messageError", handleMessageError);
+      this.socket.emit("sendMessage", { recipientId, type, content, metadata, tempMessageId });
+    });
+  }
+
+  /**
+   * Send a typing indicator to a recipient.
+   */
+  sendTyping(recipientId) {
+    if (!this.socket || !this.socket.connected) return;
+    if (!recipientId || !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+      this._error(`Invalid recipient ID format for typing: ${recipientId}`);
+      return;
+    }
+    this.socket.emit("typing", { recipientId });
+  }
+
+  /**
+   * Initiate a video call with a recipient.
+   */
+  initiateVideoCall(recipientId) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        return reject(new Error("Socket not connected"));
+      }
+      if (!recipientId || !/^[0-9a-fA-F]{24}$/.test(recipientId)) {
+        return reject(new Error(`Invalid recipient ID format: ${recipientId}`));
+      }
+      const timeout = setTimeout(() => {
+        this.socket.off("callInitiated", handleCallInitiated);
+        this.socket.off("callError", handleCallError);
+        reject(new Error("Call initiation timeout"));
+      }, CALL_TIMEOUT_MS);
+      const handleCallInitiated = (callData) => {
+        clearTimeout(timeout);
+        this.socket.off("callInitiated", handleCallInitiated);
+        this.socket.off("callError", handleCallError);
+        resolve(callData);
+      };
+      const handleCallError = (error) => {
+        clearTimeout(timeout);
+        this.socket.off("callInitiated", handleCallInitiated);
+        this.socket.off("callError", handleCallError);
+        reject(new Error(error.message || "Failed to initiate call"));
+      };
+      this.socket.once("callInitiated", handleCallInitiated);
+      this.socket.once("callError", handleCallError);
+      this.socket.emit("initiateVideoCall", { recipientId });
+    });
+  }
+
+  /**
+   * Answer an incoming video call.
+   */
+  answerVideoCall(callerId, accept = true) {
+    return new Promise((resolve, reject) => {
+      if (!this.socket || !this.socket.connected) {
+        return reject(new Error("Socket not connected"));
+      }
+      if (!callerId || !/^[0-9a-fA-F]{24}$/.test(callerId)) {
+        return reject(new Error(`Invalid caller ID format: ${callerId}`));
+      }
+      const timeout = setTimeout(() => {
+        this.socket.off("callAnswered", handleCallAnswered);
+        this.socket.off("callError", handleCallError);
+        reject(new Error("Call answer timeout"));
+      }, CALL_TIMEOUT_MS);
+      const handleCallAnswered = (callData) => {
+        clearTimeout(timeout);
+        this.socket.off("callAnswered", handleCallAnswered);
+        this.socket.off("callError", handleCallError);
+        resolve(callData);
+      };
+      const handleCallError = (error) => {
+        clearTimeout(timeout);
+        this.socket.off("callAnswered", handleCallAnswered);
+        this.socket.off("callError", handleCallError);
+        reject(new Error(error.message || "Failed to answer call"));
+      };
+      this.socket.once("callAnswered", handleCallAnswered);
+      this.socket.once("callError", handleCallError);
+      this.socket.emit("answerCall", { callerId, accept });
+    });
+  }
+
+  // --- Browser Event Handlers ---
   _handleOnline = () => {
     this._log("Browser went online, attempting reconnect");
-    if (!this.socket || !this.socket.connected) {
-      this.reconnect();
-    }
+    if (!this.socket || !this.socket.connected) this.reconnect();
   };
 
   _handleOffline = () => {
@@ -765,12 +589,8 @@ class SocketService {
   _handleVisibilityChange = () => {
     if (document.visibilityState === "visible") {
       this._log("Tab became visible, checking connection");
-      if (this.socket && !this.socket.connected && navigator.onLine) {
-        this.reconnect();
-      }
-      if (this.socket && this.socket.connected) {
-        this._startHeartbeat();
-      }
+      if (this.socket && !this.socket.connected && navigator.onLine) this.reconnect();
+      if (this.socket && this.socket.connected) this._startHeartbeat();
     } else {
       this._log("Tab hidden, pausing heartbeat");
       this._stopHeartbeat();
@@ -778,6 +598,5 @@ class SocketService {
   };
 }
 
-// Create a singleton instance of SocketService
 const socketService = new SocketService();
 export default socketService;
