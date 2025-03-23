@@ -1,0 +1,434 @@
+/* Base styles, variables, and reset */
+:root {
+  /* Color Palette */
+  --primary-color: #ff6b6b;
+  --primary-hover: #ff5252;
+  --secondary-color: #4ecdc4;
+  --accent-color: #ffe66d;
+  --text-color: #2d3436;
+  --text-light: #636e72;
+  --bg-color: #ffffff;
+  --danger-rgb: #ff6b6b;
+  --bg-light: #f9f9f9;
+  --bg-dark: #2d3436;
+  --border-color: #dfe6e9;
+  --success-color: #55efc4;
+  --warning-color: #ffeaa7;
+  --error-color: #ff7675;
+  --border-radius: 8px;
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --transition: all 0.3s ease;
+
+  /* Enhanced color palette */
+  --primary: #ff3366;
+  --primary-light: #ff6b99;
+  --primary-dark: #cc2952;
+  --primary-subtle: rgba(255, 51, 102, 0.08);
+  --secondary: #3a86ff;
+  --secondary-light: #6aa2ff;
+  --secondary-dark: #2868cc;
+  --accent: #8a2be2;
+  --accent-light: #a85aff;
+  --success: #33d685;
+  --success-light: #a5f2d5;
+  --warning: #ffd166;
+  --warning-light: #fff0cc;
+  --danger: #ef476f;
+  --danger-light: #ffd3df;
+
+  /* Neutrals */
+  --dark: #222831;
+  --medium: #393e46;
+  --light: #f2f2f2;
+  --white: #ffffff;
+  --background: #f8f9fa;
+
+  /* Text */
+  --text-dark: #1a1a1a;
+  --text-medium: #4f4f4f;
+  --text-light: #7e7e7e;
+  --text-subtle: #9e9e9e;
+
+  /* UI Elements */
+  --border-color: #e0e0e0;
+  --border-color-focus: #aabcff;
+
+  /* Shadows & Effects */
+  --card-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  --hover-shadow: 0 10px 24px rgba(0, 0, 0, 0.1);
+  --active-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+  /* "Glass" styling */
+  --glass-bg: rgba(255, 255, 255, 0.4);
+  --glass-bg-dark: rgba(24, 24, 24, 0.4);
+  --glass-blur: blur(10px);
+  --glass-border: rgba(255, 255, 255, 0.2);
+
+  /* Spacing */
+  --space-xxs: 2px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-xxxl: 64px;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-round: 50%;
+
+  /* Typography */
+  --font-size-xs: 0.75rem; /* 12px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-md: 1rem; /* 16px */
+  --font-size-lg: 1.125rem; /* 18px */
+  --font-size-xl: 1.25rem; /* 20px */
+  --font-size-2xl: 1.5rem; /* 24px */
+  --font-size-3xl: 2rem; /* 32px */
+  --font-size-4xl: 2.5rem; /* 40px */
+
+  /* Line heights */
+  --line-height-tight: 1.2;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.8;
+
+  /* Font weights */
+  --font-weight-light: 300;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 350ms ease;
+
+  /* Settings page specific variables */
+  --text-primary: var(--text-dark);
+  --text-secondary: var(--text-medium);
+  --bg-card: var(--white);
+  --bg-secondary: var(--light);
+  --bg-hover: rgba(0, 0, 0, 0.05);
+  --bg-active: rgba(var(--primary-rgb), 0.1);
+  --bg-inactive: #e0e0e0;
+  --bg-warning: var(--warning-light);
+  --bg-danger: var(--danger-light);
+  --danger-color: var(--danger);
+  --danger-color-dark: #d63c5e;
+  --text-disabled: #a0a0a0;
+  --bg-input: var(--white);
+  --primary-rgb: 255, 51, 102;
+
+  /* Add notification color variables */
+  --color-heart: #ff4b4b;
+  --color-comment: #4b7bff;
+  --color-story: #ff9f4b;
+  --color-call: #4bff7b;
+  --bg-unread: rgba(0, 123, 255, 0.05);
+}
+
+/* Dark mode variables */
+.dark {
+  --primary-color: #ff6b6b;
+  --primary-hover: #ff5252;
+  --secondary-color: #4ecdc4;
+  --accent-color: #ffe66d;
+  --text-color: #f1f1f1;
+  --text-light: #b2bec3;
+  --bg-color: #2d3436;
+  --bg-light: #353b48;
+  --bg-dark: #1e272e;
+  --border-color: #636e72;
+
+  /* Enhanced dark mode */
+  --primary: #ff3366;
+  --primary-light: #ff6b99;
+  --primary-dark: #cc2952;
+  --primary-subtle: rgba(255, 51, 102, 0.15);
+
+  /* Neutrals */
+  --dark: #121212;
+  --medium: #1e1e1e;
+  --light: #2a2a2a;
+  --white: #333333;
+  --background: #121212;
+
+  /* Text */
+  --text-dark: #f0f0f0;
+  --text-medium: #c0c0c0;
+  --text-light: #a0a0a0;
+  --text-subtle: #808080;
+
+  /* UI Elements */
+  --border-color: #444444;
+  --border-color-focus: #666666;
+
+  /* Shadows & Effects */
+  --card-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  --hover-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+  --active-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+  /* "Glass" styling */
+  --glass-bg: rgba(30, 30, 30, 0.4);
+  --glass-bg-dark: rgba(15, 15, 15, 0.4);
+  --glass-blur: blur(10px);
+  --glass-border: rgba(50, 50, 50, 0.2);
+
+  /* Settings page specific variables for dark mode */
+  --text-primary: var(--text-dark);
+  --text-secondary: var(--text-medium);
+  --bg-card: var(--medium);
+  --bg-secondary: var(--dark);
+  --bg-hover: rgba(255, 255, 255, 0.1);
+  --bg-active: rgba(var(--primary-rgb), 0.2);
+  --bg-inactive: #444444;
+  --bg-warning: rgba(255, 209, 102, 0.2);
+  --bg-danger: rgba(239, 71, 111, 0.2);
+  --text-disabled: #666666;
+  --bg-input: var(--dark);
+
+  /* Add these lines to your existing dark mode variables */
+  --bg-unread: rgba(0, 123, 255, 0.1);
+}
+
+/* Reset and base styles */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans",
+    "Helvetica Neue", sans-serif;
+  color: var(--text-color);
+  background-color: var(--bg-light);
+  line-height: 1.6;
+  transition: var(--transition);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-tight);
+  margin-bottom: var(--space-sm);
+  color: var(--text-dark);
+}
+
+h1 {
+  font-size: var(--font-size-3xl);
+}
+h2 {
+  font-size: var(--font-size-2xl);
+}
+h3 {
+  font-size: var(--font-size-xl);
+}
+h4 {
+  font-size: var(--font-size-lg);
+}
+h5 {
+  font-size: var(--font-size-md);
+}
+h6 {
+  font-size: var(--font-size-sm);
+}
+
+p {
+  margin-bottom: var(--space-md);
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+  transition: color var(--transition-normal);
+}
+
+a:hover {
+  color: var(--primary-dark);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+button:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--border-color-focus);
+}
+
+button {
+  cursor: pointer !important;
+  position: relative;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.dating-app {
+  max-width: 100%;
+  overflow-x: hidden;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Accessibility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--border-color-focus);
+  outline-offset: 2px;
+}
+
+/* Common animations */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.95);
+    opacity: 1;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+}
+
+/* Notification pulse animation */
+@keyframes notification-pulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0.7);
+  }
+  70% {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 10px rgba(var(--primary-rgb), 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0);
+  }
+}
+
+.notification-pulse {
+  animation: notification-pulse 1s cubic-bezier(0.66, 0, 0, 1) 2;
+}
+
+/* Utility classes for sizes */
+.w-6, .h-6 {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.w-8, .h-8 {
+  width: 2rem;
+  height: 2rem;
+}
+
+.w-10, .h-10 {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.w-16, .h-16 {
+  width: 4rem;
+  height: 4rem;
+}
+
+.w-24, .h-24 {
+  width: 6rem;
+  height: 6rem;
+}
+
+/* Utility classes */
+.relative {
+  position: relative;
+}
+
+.rounded-full {
+  border-radius: 9999px;
+}
+
+.overflow-hidden {
+  overflow: hidden;
+}
+
+.w-full, .h-full {
+  width: 100%;
+  height: 100%;
+}
+
+.object-cover {
+  object-fit: cover;
+}
+
+.opacity-0 {
+  opacity: 0;
+}
+
+.opacity-100 {
+  opacity: 1;
+}
