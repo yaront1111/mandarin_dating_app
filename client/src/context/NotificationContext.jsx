@@ -5,23 +5,24 @@ import { useAuth } from "./AuthContext"
 import notificationService from "../services/notificationService"
 import { toast } from "react-toastify"
 import { useNavigate } from "react-router-dom"
+import socketService from "../services/socketService"
 
-// Create context
+// Create the Notification Context
 const NotificationContext = createContext()
 
 export const NotificationProvider = ({ children }) => {
   const { isAuthenticated, user } = useAuth()
-  const [notifications, setNotifications] = useState([])
+  const [notifications, setNotifications] = useState([]) // Always initialize as an empty array
   const [unreadCount, setUnreadCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const navigate = useNavigate()
 
-  // Initialize notification service when user is authenticated
+  // Initialize notification service and listen for updates when authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
       setIsLoading(true)
 
-      // Get user notification settings from user object or use defaults
+      // Use user settings if available, otherwise fallback to defaults
       const userSettings = user.settings || {
         notifications: {
           messages: true,
@@ -29,49 +30,63 @@ export const NotificationProvider = ({ children }) => {
           stories: true,
           likes: true,
           comments: true,
+          photoRequests: true,
         },
       }
 
-      // Initialize notification service
+      // Initialize the notification service with the settings
       notificationService.initialize(userSettings)
 
-      // Add listener for notification updates
+      // Add a listener to update local state when the service sends new data.
       const removeListener = notificationService.addListener((data) => {
-        setNotifications(data.notifications)
-        setUnreadCount(data.unreadCount)
+        // Use fallback empty array if data.notifications is undefined
+        setNotifications(data.notifications || [])
+        setUnreadCount(typeof data.unreadCount === "number" ? data.unreadCount : 0)
       })
 
-      // Fetch initial notifications
+      // Fetch initial notifications from the service.
       notificationService
         .getNotifications()
         .then((fetchedNotifications) => {
-          setNotifications(fetchedNotifications)
-          setUnreadCount(fetchedNotifications.filter((n) => !n.read).length)
+          const notificationsData = fetchedNotifications || []
+          setNotifications(notificationsData)
+          setUnreadCount(notificationsData.filter((n) => !n.read).length)
           setIsLoading(false)
         })
         .catch((error) => {
           console.error("Error fetching notifications:", error)
           setIsLoading(false)
-          // Initialize with empty array to prevent undefined errors
+          // Ensure notifications is defined to prevent runtime errors.
           setNotifications([])
         })
 
-      // Clean up listener on unmount
+      // Clean up the listener when the component unmounts or dependencies change.
       return () => {
         removeListener()
+        // Ensure we clean up socket listeners to prevent memory leaks
+        if (notificationService && notificationService.initialized) {
+          const socket = socketService.socket
+          if (socket) {
+            socket.off("new_message")
+            socket.off("incoming_call")
+            socket.off("new_story")
+            socket.off("new_like")
+            socket.off("photo_permission_request")
+            socket.off("photo_permission_response")
+            socket.off("new_comment")
+            socket.off("notification")
+          }
+        }
       }
     } else {
-      // Reset state when user logs out
+      // Reset notifications state when not authenticated.
       setNotifications([])
       setUnreadCount(0)
     }
   }, [isAuthenticated, user])
 
-  // Update the addTestNotification function to include more realistic test data
-
-  // Add a test notification (for development/testing)
+  // Function to add a test notification for development/testing purposes.
   const addTestNotification = () => {
-    // Create random notification types for testing
     const notificationTypes = [
       {
         type: "message",
@@ -115,7 +130,7 @@ export const NotificationProvider = ({ children }) => {
       },
     ]
 
-    // Select a random notification type
+    // Randomly select a notification type
     const randomNotification = notificationTypes[Math.floor(Math.random() * notificationTypes.length)]
 
     const newNotification = {
@@ -125,20 +140,20 @@ export const NotificationProvider = ({ children }) => {
       createdAt: new Date().toISOString(),
     }
 
-    // Add to local state immediately for UI feedback
+    // Update local state immediately for UI feedback
     setNotifications((prev) => [newNotification, ...prev])
     setUnreadCount((prev) => prev + 1)
 
-    // Also add to service
+    // Also add the test notification to the notification service
     notificationService.addNotification(newNotification)
     toast.info(`Test ${randomNotification.type} notification added`)
   }
 
-  // Mark a notification as read
+  // Mark a single notification as read
   const markAsRead = (notificationId) => {
     if (!notificationId) return
 
-    // Update local state
+    // Update local notifications state
     setNotifications((prev) =>
       prev.map((notification) =>
         notification._id === notificationId || notification.id === notificationId
@@ -147,33 +162,29 @@ export const NotificationProvider = ({ children }) => {
       ),
     )
 
-    // Update unread count
+    // Decrement unread count
     setUnreadCount((prev) => Math.max(0, prev - 1))
 
-    // Also update in service
+    // Update the notification status in the service/backend
     notificationService.markAsRead(notificationId)
   }
 
   // Mark all notifications as read
   const markAllAsRead = () => {
-    // Only proceed if there are notifications
     if (!notifications || notifications.length === 0) return
 
-    // Update local state
     setNotifications((prev) => prev.map((notification) => ({ ...notification, read: true })))
     setUnreadCount(0)
-
-    // Update in service
     notificationService.markAllAsRead()
   }
 
-  // Update the handleNotificationClick function to handle likes and photo requests
+  // Handle a click on a notification and navigate accordingly
   const handleNotificationClick = (notification) => {
     if (!notification) return
 
     console.log("Notification clicked:", notification)
 
-    // Mark as read if not already
+    // Mark the notification as read if it isn't already
     if (!notification.read) {
       markAsRead(notification._id || notification.id)
     }
@@ -181,10 +192,7 @@ export const NotificationProvider = ({ children }) => {
     // Navigate based on notification type
     try {
       if (notification.type === "message") {
-        // Get conversation partner info
         const partnerId = notification.sender?._id || notification.data?.sender?._id || notification.data?.user?._id
-
-        // Navigate to messages or the specific conversation
         if (notification.data?.conversationId) {
           navigate(`/messages/${notification.data.conversationId}`)
         } else if (partnerId) {
@@ -193,20 +201,16 @@ export const NotificationProvider = ({ children }) => {
           navigate(`/messages`)
         }
       } else if (notification.type === "like" || notification.type === "match") {
-        // Get user info
         const userId = notification.sender?._id || notification.data?.sender?._id || notification.data?.user?._id
-
         if (userId) {
           navigate(`/user/${userId}`)
         } else {
           navigate(`/matches`)
         }
       } else if (notification.type === "photoRequest" || notification.type === "photoResponse") {
-        // For photo permission requests, navigate to settings page
         if (notification.type === "photoRequest") {
           navigate(`/settings?tab=photos`)
         } else {
-          // For responses, navigate to the user's profile
           const userId = notification.data?.owner?._id || notification.data?.photoOwnerId
           if (userId) {
             navigate(`/user/${userId}`)
@@ -215,25 +219,21 @@ export const NotificationProvider = ({ children }) => {
           }
         }
       } else if (notification.type === "story") {
-        // Get story info
         const storyId = notification.data?.storyId
         if (storyId) {
-          // If using a modal for stories, trigger that instead of navigation
           window.dispatchEvent(
             new CustomEvent("viewStory", {
               detail: { storyId },
             }),
           )
         } else {
-          navigate(`/dashboard`) // Default to dashboard where stories appear
+          navigate(`/dashboard`)
         }
       } else {
-        // Default to dashboard for other notification types
         navigate(`/dashboard`)
       }
     } catch (error) {
       console.error("Error handling notification click:", error)
-      // Default fallback - just go to dashboard
       navigate("/dashboard")
     }
   }
@@ -255,7 +255,7 @@ export const NotificationProvider = ({ children }) => {
   )
 }
 
-// Custom hook to use the notification context
+// Custom hook to access the notification context
 export const useNotifications = () => {
   const context = useContext(NotificationContext)
   if (context === undefined) {

@@ -1,6 +1,8 @@
 "use client"
-import { useEffect, useState, useCallback, useRef } from "react"
+
+import React, { useEffect, useState, useCallback, useRef } from "react"
 import {
+  FaArrowLeft,
   FaHeart,
   FaComment,
   FaEllipsisH,
@@ -21,35 +23,44 @@ import {
   FaEye,
   FaTimesCircle,
 } from "react-icons/fa"
+import { useParams, useNavigate } from "react-router-dom"
 import { useUser, useChat, useAuth, useStories } from "../context"
 import { EmbeddedChat } from "../components"
-import StoriesViewer from "./Stories/StoriesViewer"
-import StoryThumbnail from "./Stories/StoryThumbnail"
+import StoriesViewer from "../components/Stories/StoriesViewer"
+import StoryThumbnail from "../components/Stories/StoryThumbnail"
 import { toast } from "react-toastify"
 import apiService from "../services/apiService.jsx"
-import "../styles/UserProfileModal.css" // Import the new CSS file
-import { useNavigate } from "react-router-dom"
+import "../styles/UserProfileModal.css"
+import { normalizePhotoUrl } from "../utils/index.js"
 
-// Simple local Spinner component
+// Custom hook to close modal on outside click
+function useOnClickOutside(ref, handler) {
+  useEffect(() => {
+    const listener = (event) => {
+      if (!ref.current || ref.current.contains(event.target)) return
+      handler(event)
+    }
+    document.addEventListener("mousedown", listener)
+    return () => document.removeEventListener("mousedown", listener)
+  }, [ref, handler])
+}
+
+// Custom hook to close modal on Escape key press
+function useEscapeKey(handler) {
+  useEffect(() => {
+    const listener = (event) => {
+      if (event.key === "Escape") handler(event)
+    }
+    document.addEventListener("keydown", listener)
+    return () => document.removeEventListener("keydown", listener)
+  }, [handler])
+}
+
 const Spinner = () => (
   <div className="spinner">
     <FaSpinner className="spinner-icon" size={32} />
   </div>
 )
-
-// Helper function to normalize photo URLs
-const normalizePhotoUrl = (url) => {
-  if (!url) return null
-  // If it's already a full URL, return it
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url
-  }
-  // If it's a relative path, make sure it has a leading slash
-  if (!url.startsWith("/")) {
-    return `/${url}`
-  }
-  return url
-}
 
 const UserProfileModal = ({ userId, isOpen, onClose }) => {
   const { user: currentUser } = useAuth()
@@ -63,35 +74,40 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     error,
     blockUser,
     reportUser,
-    sendMessage,
   } = useUser()
-  const { initiateChat } = useChat()
+  // FIX: Destructure both sendMessage and initiateChat from useChat
+  const { sendMessage, initiateChat } = useChat()
   const { loadUserStories, hasUnviewedStories } = useStories()
+  const navigate = useNavigate()
+
+  // Local state variables
+  const [user, setUser] = useState(null)
+  const [loading, setLoading] = useState(false)
   const [userStories, setUserStories] = useState([])
-  const [showChat, setShowChat] = useState(false)
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
   const [showActions, setShowActions] = useState(false)
   const [showAllInterests, setShowAllInterests] = useState(false)
   const [showStories, setShowStories] = useState(false)
-  const [loadingPermissions, setLoadingPermissions] = useState({}) // Track loading state per photo
+  const [showChat, setShowChat] = useState(false)
+  const [loadingPermissions, setLoadingPermissions] = useState({})
   const [permissionStatus, setPermissionStatus] = useState({})
   const [photoLoadError, setPhotoLoadError] = useState({})
   const [isLiking, setIsLiking] = useState(false)
   const [isChatInitiating, setIsChatInitiating] = useState(false)
-  const profileRef = useRef(null)
-  const [isRequestingAll, setIsRequestingAll] = useState(false)
   const [pendingRequests, setPendingRequests] = useState([])
   const [isLoadingRequests, setIsLoadingRequests] = useState(false)
   const [isProcessingApproval, setIsProcessingApproval] = useState(false)
-  const modalRef = useRef(null)
-  const navigate = useNavigate()
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [isRequestingAll, setIsRequestingAll] = useState(false)
 
-  // Check if the profile belongs to the current user
+  // Ref for modal container
+  const modalRef = useRef(null)
+  useOnClickOutside(modalRef, onClose)
+  useEscapeKey(onClose)
+
+  // Determine if viewing own profile
   const isOwnProfile = currentUser && profileUser && currentUser._id === profileUser._id
 
-  // Add a mounted ref to prevent state updates after component unmount
+  // Mounted ref to prevent state updates after unmount
   const isMountedRef = useRef(true)
   useEffect(() => {
     return () => {
@@ -99,89 +115,45 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }
   }, [])
 
-  // Handle click outside to close modal
+  // Fetch user data when userId changes
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (modalRef.current && !modalRef.current.contains(event.target)) {
-        onClose()
-      }
-    }
-    if (isOpen) {
-      document.addEventListener("mousedown", handleClickOutside)
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [isOpen, onClose])
-
-  // Handle escape key to close modal
-  useEffect(() => {
-    const handleEscKey = (event) => {
-      if (event.key === "Escape") {
-        onClose()
-      }
-    }
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscKey)
-    }
-    return () => {
-      document.removeEventListener("keydown", handleEscKey)
-    }
-  }, [isOpen, onClose])
-
-  // Add this console log right after the user data is fetched to see what's actually coming from the server
-  useEffect(() => {
-    const fetchUser = async () => {
-      if (userId) {
+    if (userId) {
+      const fetchUser = async () => {
         setLoading(true)
         try {
           const userData = await getUser(userId)
           console.log("User data received:", JSON.stringify(userData, null, 2))
           setUser(userData)
-        } catch (error) {
-          console.error("Error fetching user:", error)
+        } catch (err) {
+          console.error("Error fetching user:", err)
         } finally {
           setLoading(false)
         }
       }
+      fetchUser()
     }
-
-    fetchUser()
   }, [userId, getUser])
 
-  // Load user data
+  // Load stories, photo permissions, and pending requests when modal opens
   useEffect(() => {
     if (isOpen && userId) {
       getUser(userId)
-      // Load user stories safely
-      try {
-        loadUserStories?.(userId)
-          .then((stories) => {
-            if (isMountedRef.current && stories && Array.isArray(stories)) {
-              setUserStories(stories)
-            }
-          })
-          .catch((err) => console.error("Error loading stories:", err))
-      } catch (error) {
-        console.log("Stories functionality not available")
-      }
+      loadUserStories?.(userId)
+        .then((stories) => {
+          if (isMountedRef.current && Array.isArray(stories)) {
+            setUserStories(stories)
+          }
+        })
+        .catch((err) => console.error("Error loading stories:", err))
       fetchPhotoPermissions()
-      // If viewing own profile, fetch pending requests
       if (currentUser && currentUser._id === userId) {
         fetchPendingRequests()
       }
-    }
-    // Reset states when user changes or modal opens
-    if (isOpen) {
       setActivePhotoIndex(0)
       setShowAllInterests(false)
       setShowActions(false)
       setPhotoLoadError({})
       setPermissionStatus({})
-      setLoadingPermissions({})
-      setPendingRequests([])
-      setShowChat(false)
-      setShowStories(false)
     }
     return () => {
       setShowChat(false)
@@ -189,150 +161,6 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }
   }, [userId, getUser, loadUserStories, currentUser, isOpen])
 
-  // Fetch pending photo access requests for the current user
-  const fetchPendingRequests = async () => {
-    if (!currentUser) return
-    setIsLoadingRequests(true)
-    try {
-      const response = await apiService.get("/users/photos/permissions?status=pending")
-      if (response.success) {
-        // Group requests by user
-        const requestsByUser = {}
-        response.data.forEach((request) => {
-          const userId = request.requestedBy._id
-          if (!requestsByUser[userId]) {
-            requestsByUser[userId] = {
-              user: request.requestedBy,
-              requests: [],
-            }
-          }
-          requestsByUser[userId].requests.push(request)
-        })
-        // Convert to array
-        const groupedRequests = Object.values(requestsByUser)
-        setPendingRequests(groupedRequests)
-      }
-    } catch (error) {
-      console.error("Error fetching pending requests:", error)
-      toast.error("Failed to load photo access requests")
-    } finally {
-      setIsLoadingRequests(false)
-    }
-  }
-
-  // Handle approving all requests from a specific user
-  const handleApproveAllRequests = async (userId, requests) => {
-    setIsProcessingApproval(true)
-    try {
-      const results = await Promise.allSettled(
-        requests.map((request) =>
-          apiService.put(`/users/photos/permissions/${request._id}`, {
-            status: "approved",
-          }),
-        ),
-      )
-      const successCount = results.filter((result) => result.status === "fulfilled" && result.value.success).length
-      if (successCount === requests.length) {
-        toast.success(`Approved all photo requests from this user`)
-      } else if (successCount > 0) {
-        toast.success(`Approved ${successCount} out of ${requests.length} photo requests`)
-      } else {
-        toast.error("Failed to approve photo requests")
-      }
-      // Refresh the pending requests
-      fetchPendingRequests()
-    } catch (error) {
-      console.error("Error approving requests:", error)
-      toast.error("Failed to approve photo requests")
-    } finally {
-      setIsProcessingApproval(false)
-    }
-  }
-
-  // Handle rejecting all requests from a specific user
-  const handleRejectAllRequests = async (userId, requests) => {
-    setIsProcessingApproval(true)
-    try {
-      const results = await Promise.allSettled(
-        requests.map((request) =>
-          apiService.put(`/users/photos/permissions/${request._id}`, {
-            status: "rejected",
-          }),
-        ),
-      )
-      const successCount = results.filter((result) => result.status === "fulfilled" && result.value.success).length
-      if (successCount === requests.length) {
-        toast.success(`Rejected all photo requests from this user`)
-      } else if (successCount > 0) {
-        toast.success(`Rejected ${successCount} out of ${requests.length} photo requests`)
-      } else {
-        toast.error("Failed to reject photo requests")
-      }
-      // Refresh the pending requests
-      fetchPendingRequests()
-    } catch (error) {
-      console.error("Error rejecting requests:", error)
-      toast.error("Failed to reject photo requests")
-    } finally {
-      setIsProcessingApproval(false)
-    }
-  }
-
-  // Improved handleRequestAccess function to handle multiple photo requests
-  const handleRequestAccess = async (photoId, e) => {
-    if (e) e.stopPropagation()
-    if (!profileUser || !photoId) return
-    // Set loading state for this specific photo
-    setLoadingPermissions((prev) => ({
-      ...prev,
-      [photoId]: true,
-    }))
-    try {
-      // Make a direct API call
-      const response = await apiService.post(`/users/photos/${photoId}/request`, {
-        userId: profileUser._id,
-      })
-      if (response.success) {
-        // Update the local permission status immediately for better UX
-        setPermissionStatus((prev) => ({
-          ...prev,
-          [photoId]: "pending",
-        }))
-        toast.success("Photo access requested")
-      } else if (response.message && response.message.includes("already exists")) {
-        // If there's an error but it's just that the request already exists
-        setPermissionStatus((prev) => ({
-          ...prev,
-          [photoId]: "pending",
-        }))
-        toast.info("Access request already sent for this photo")
-      } else {
-        throw new Error(response.error || "Failed to request access")
-      }
-    } catch (error) {
-      console.error("Error requesting photo access:", error)
-      // Check if the error is about an existing request
-      if (error.message && error.message.includes("already exists")) {
-        setPermissionStatus((prev) => ({
-          ...prev,
-          [photoId]: "pending",
-        }))
-        toast.info("Access request already sent for this photo")
-      } else {
-        toast.error(error.message || "Failed to request photo access")
-      }
-    } finally {
-      // Clear loading state for this specific photo
-      setLoadingPermissions((prev) => ({
-        ...prev,
-        [photoId]: false,
-      }))
-      // Refresh all permissions to ensure we have the latest data
-      fetchPhotoPermissions()
-    }
-  }
-
-  // Improved fetchPhotoPermissions function
   const fetchPhotoPermissions = async () => {
     if (!userId) return
     try {
@@ -351,15 +179,122 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }
   }
 
-  // Handle image loading errors
-  const handleImageError = useCallback((photoId) => {
-    setPhotoLoadError((prev) => ({
-      ...prev,
-      [photoId]: true,
-    }))
-  }, [])
+  const fetchPendingRequests = async () => {
+    if (!currentUser) return
+    setIsLoadingRequests(true)
+    try {
+      const response = await apiService.get("/users/photos/permissions?status=pending")
+      if (response.success) {
+        const requestsByUser = {}
+        response.data.forEach((request) => {
+          const uid = request.requestedBy._id
+          if (!requestsByUser[uid]) {
+            requestsByUser[uid] = { user: request.requestedBy, requests: [] }
+          }
+          requestsByUser[uid].requests.push(request)
+        })
+        setPendingRequests(Object.values(requestsByUser))
+      }
+    } catch (error) {
+      console.error("Error fetching pending requests:", error)
+      toast.error("Failed to load photo access requests")
+    } finally {
+      setIsLoadingRequests(false)
+    }
+  }
 
-  // Handle liking/unliking users
+  // Request access for an individual photo
+  const handleRequestAccess = async (photoId, e) => {
+    e?.stopPropagation()
+    if (!profileUser || !photoId) return
+    setLoadingPermissions((prev) => ({ ...prev, [photoId]: true }))
+    try {
+      const response = await apiService.post(`/users/photos/${photoId}/request`, {
+        userId: profileUser._id,
+      })
+      if (response.success) {
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }))
+        toast.success("Photo access requested")
+      } else if (response.message?.includes("already exists")) {
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }))
+        toast.info("Access request already sent for this photo")
+      } else {
+        throw new Error(response.error || "Failed to request access")
+      }
+    } catch (error) {
+      console.error("Error requesting photo access:", error)
+      if (error.message?.includes("already exists")) {
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }))
+        toast.info("Access request already sent for this photo")
+      } else {
+        toast.error(error.message || "Failed to request photo access")
+      }
+    } finally {
+      setLoadingPermissions((prev) => ({ ...prev, [photoId]: false }))
+      fetchPhotoPermissions()
+    }
+  }
+
+  // Approve all pending requests from a requester
+  const handleApproveAllRequests = async (requesterId, requests) => {
+    setIsProcessingApproval(true)
+    try {
+      const results = await Promise.allSettled(
+        requests.map((request) =>
+          apiService.put(`/users/photos/permissions/${request._id}`, { status: "approved" })
+        )
+      )
+      const successCount = results.filter(
+        (result) => result.status === "fulfilled" && result.value.success
+      ).length
+      if (successCount === requests.length) {
+        toast.success("Approved all photo requests from this user")
+      } else if (successCount > 0) {
+        toast.success(`Approved ${successCount} out of ${requests.length} photo requests`)
+      } else {
+        toast.error("Failed to approve photo requests")
+      }
+      // Send a confirmation message to the requester if sendMessage is available
+      if (sendMessage) {
+        await sendMessage(requesterId, "text", `I've approved your request to view my private photos.`)
+      }
+      fetchPendingRequests()
+    } catch (error) {
+      console.error("Error approving requests:", error)
+      toast.error("Failed to approve photo requests")
+    } finally {
+      setIsProcessingApproval(false)
+    }
+  }
+
+  // Reject all pending requests from a requester
+  const handleRejectAllRequests = async (requesterId, requests) => {
+    setIsProcessingApproval(true)
+    try {
+      const results = await Promise.allSettled(
+        requests.map((request) =>
+          apiService.put(`/users/photos/permissions/${request._id}`, { status: "rejected" })
+        )
+      )
+      const successCount = results.filter(
+        (result) => result.status === "fulfilled" && result.value.success
+      ).length
+      if (successCount === requests.length) {
+        toast.success("Rejected all photo requests from this user")
+      } else if (successCount > 0) {
+        toast.success(`Rejected ${successCount} out of ${requests.length} photo requests`)
+      } else {
+        toast.error("Failed to reject photo requests")
+      }
+      fetchPendingRequests()
+    } catch (error) {
+      console.error("Error rejecting requests:", error)
+      toast.error("Failed to reject photo requests")
+    } finally {
+      setIsProcessingApproval(false)
+    }
+  }
+
   const handleLike = async () => {
     if (!profileUser || isLiking) return
     setIsLiking(true)
@@ -394,36 +329,15 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }
   }
 
-  // Handle starting chat
-  const handleMessage = async () => {
+  // Handle starting chat by simply opening the EmbeddedChat UI (instead of sending a message)
+  const handleMessage = () => {
     setIsChatInitiating(true)
-    try {
-      await sendMessage(userId)
-      navigate("/messages")
-      onClose()
-    } catch (error) {
-      console.error("Error sending message:", error)
-    } finally {
+    setTimeout(() => {
+      setShowChat(true)
       setIsChatInitiating(false)
-    }
+    }, 500)
   }
 
-  // Close chat window
-  const handleCloseChat = () => {
-    setShowChat(false)
-  }
-
-  // View user stories
-  const handleViewStories = () => {
-    setShowStories(true)
-  }
-
-  // Close stories viewer
-  const handleCloseStories = () => {
-    setShowStories(false)
-  }
-
-  // Navigate through photos
   const nextPhoto = () => {
     if (profileUser?.photos && activePhotoIndex < profileUser.photos.length - 1) {
       setActivePhotoIndex(activePhotoIndex + 1)
@@ -431,76 +345,57 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
   }
 
   const prevPhoto = () => {
-    if (activePhotoIndex > 0) {
-      setActivePhotoIndex(activePhotoIndex - 1)
-    }
+    if (activePhotoIndex > 0) setActivePhotoIndex(activePhotoIndex - 1)
   }
 
-  // Calculate compatibility score between users
   const calculateCompatibility = () => {
-    if (!profileUser || !profileUser.details || !currentUser || !currentUser.details) return 0
+    if (!profileUser || !profileUser.details || !currentUser || !currentUser.details)
+      return 0
     let score = 0
-
-    // Location
-    if (profileUser.details.location === currentUser.details.location) {
-      score += 25
-    }
-
-    // Age proximity
+    if (profileUser.details.location === currentUser.details.location) score += 25
     const ageDiff = Math.abs((profileUser.details.age || 0) - (currentUser.details.age || 0))
     if (ageDiff <= 5) score += 25
     else if (ageDiff <= 10) score += 15
     else score += 5
-
-    // Interests
     const profileInterests = profileUser.details?.interests || []
     const userInterests = currentUser.details?.interests || []
     const commonInterests = profileInterests.filter((i) => userInterests.includes(i))
     score += Math.min(50, commonInterests.length * 10)
-
     return Math.min(100, score)
   }
 
-  // Request access to all private photos at once
   const handleRequestAccessToAllPhotos = async () => {
     if (!profileUser || !profileUser.photos) return
-    // Find all private photos that don't have approved access
     const privatePhotos = profileUser.photos.filter(
-      (photo) => photo.isPrivate && (!permissionStatus[photo._id] || permissionStatus[photo._id] !== "approved"),
+      (photo) =>
+        photo.isPrivate &&
+        (!permissionStatus[photo._id] || permissionStatus[photo._id] !== "approved")
     )
     if (privatePhotos.length === 0) {
       toast.info("No private photos to request access to")
       return
     }
-
-    // Set loading state
     setIsRequestingAll(true)
     try {
-      // Request access to each photo
       const results = await Promise.allSettled(
         privatePhotos.map((photo) =>
-          apiService.post(`/users/photos/${photo._id}/request`, {
-            userId: profileUser._id,
-          }),
-        ),
+          apiService.post(`/users/photos/${photo._id}/request`, { userId: profileUser._id })
+        )
       )
-
-      // Count successful requests
-      const successCount = results.filter((result) => result.status === "fulfilled" && result.value.success).length
-      // Count already pending requests
+      const successCount = results.filter(
+        (result) => result.status === "fulfilled" && result.value.success
+      ).length
       const pendingCount = results.filter(
         (result) =>
-          result.status === "fulfilled" && result.value.message && result.value.message.includes("already exists"),
+          result.status === "fulfilled" &&
+          result.value.message &&
+          result.value.message.includes("already exists")
       ).length
-
-      // Update UI for all photos
       const newPermissionStatus = { ...permissionStatus }
       privatePhotos.forEach((photo) => {
         newPermissionStatus[photo._id] = "pending"
       })
       setPermissionStatus(newPermissionStatus)
-
-      // Show appropriate message
       if (successCount > 0 && pendingCount > 0) {
         toast.success(`Requested access to ${successCount} photos. ${pendingCount} already pending.`)
       } else if (successCount > 0) {
@@ -508,8 +403,6 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       } else if (pendingCount > 0) {
         toast.info("Access requests already sent for all photos")
       }
-
-      // Refresh permissions to ensure we have the latest data
       fetchPhotoPermissions()
     } catch (error) {
       console.error("Error requesting photo access:", error)
@@ -519,25 +412,22 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     }
   }
 
-  // Check if there's a pending request from the current profile user
   const hasPendingRequestFromUser = pendingRequests.some(
-    (item) => item.user && profileUser && item.user._id === profileUser._id,
+    (item) => item.user && profileUser && item.user._id === profileUser._id
   )
-
-  // Get the pending requests from the current profile user
   const currentUserRequests = pendingRequests.find(
-    (item) => item.user && profileUser && item.user._id === profileUser._id,
+    (item) => item.user && profileUser && item.user._id === profileUser._id
   )
 
   const compatibility = profileUser && currentUser ? calculateCompatibility() : 0
   const commonInterests =
     profileUser && currentUser && profileUser.details?.interests
-      ? profileUser.details.interests.filter((interest) => currentUser.details?.interests?.includes(interest))
+      ? profileUser.details.interests.filter((interest) =>
+          currentUser.details?.interests?.includes(interest)
+        )
       : []
 
   if (!isOpen) return null
-
-  // Handle errors and loading states
   if (loading) {
     return (
       <div className="modal-overlay">
@@ -550,7 +440,6 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       </div>
     )
   }
-
   if (error) {
     return (
       <div className="modal-overlay">
@@ -566,7 +455,6 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
       </div>
     )
   }
-
   if (!profileUser) {
     return (
       <div className="modal-overlay">
@@ -583,10 +471,8 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
     )
   }
 
-  // Helper function to capitalize first letter
-  const capitalize = (str) => {
-    return str.charAt(0).toUpperCase() + str.slice(1)
-  }
+  // Helper to capitalize first letter
+  const capitalize = (str) => str.charAt(0).toUpperCase() + str.slice(1)
 
   return (
     <div className="modal-overlay">
@@ -594,9 +480,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
         <button className="modal-close-btn" onClick={onClose}>
           <FaTimesCircle />
         </button>
-        <div className="modern-user-profile" ref={profileRef}>
+        <div className="modern-user-profile">
           <div className="container profile-content">
-            {/* Show pending requests notification if this user has requested access to your photos */}
+            {/* Pending requests notification */}
             {!isOwnProfile && hasPendingRequestFromUser && currentUserRequests && (
               <div className="pending-requests-notification">
                 <div className="notification-content">
@@ -611,14 +497,18 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 <div className="notification-actions">
                   <button
                     className="btn btn-success"
-                    onClick={() => handleApproveAllRequests(profileUser._id, currentUserRequests.requests)}
+                    onClick={() =>
+                      handleApproveAllRequests(profileUser._id, currentUserRequests.requests)
+                    }
                     disabled={isProcessingApproval}
                   >
                     {isProcessingApproval ? <FaSpinner className="spinner-icon" /> : <FaCheck />} Approve All
                   </button>
                   <button
                     className="btn btn-danger"
-                    onClick={() => handleRejectAllRequests(profileUser._id, currentUserRequests.requests)}
+                    onClick={() =>
+                      handleRejectAllRequests(profileUser._id, currentUserRequests.requests)
+                    }
                     disabled={isProcessingApproval}
                   >
                     {isProcessingApproval ? <FaSpinner className="spinner-icon" /> : <FaTimes />} Reject All
@@ -626,24 +516,24 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 </div>
               </div>
             )}
+
             <div className="profile-layout">
-              {/* Left: Photos */}
+              {/* Left: Photos & Stories */}
               <div className="profile-photos-section">
-                {/* Stories Thumbnail */}
                 {userStories && userStories.length > 0 && (
                   <div className="profile-stories">
                     <StoryThumbnail
                       user={profileUser}
-                      hasUnviewedStories={hasUnviewedStories && hasUnviewedStories(profileUser._id)}
-                      onClick={handleViewStories}
+                      hasUnviewedStories={hasUnviewedStories(profileUser._id)}
+                      onClick={() => setShowStories(true)}
                     />
                   </div>
                 )}
-                {profileUser && profileUser.photos && profileUser.photos.length > 0 ? (
+
+                {profileUser.photos && profileUser.photos.length > 0 ? (
                   <div className="photo-gallery-container">
                     <div className="gallery-photo">
-                      {profileUser.photos[activePhotoIndex] &&
-                      profileUser.photos[activePhotoIndex].isPrivate &&
+                      {profileUser.photos[activePhotoIndex].isPrivate &&
                       (!permissionStatus[profileUser.photos[activePhotoIndex]._id] ||
                         permissionStatus[profileUser.photos[activePhotoIndex]._id] !== "approved") ? (
                         <div className="private-photo-placeholder">
@@ -674,7 +564,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                           <img
                             src={normalizePhotoUrl(profileUser.photos[activePhotoIndex].url) || "/placeholder.svg"}
                             alt={profileUser.nickname}
-                            onError={() => handleImageError(profileUser.photos[activePhotoIndex]._id)}
+                            onError={() =>
+                              setPhotoLoadError((prev) => ({
+                                ...prev,
+                                [profileUser.photos[activePhotoIndex]._id]: true,
+                              }))
+                            }
                             style={{
                               display: photoLoadError[profileUser.photos[activePhotoIndex]._id] ? "none" : "block",
                             }}
@@ -732,8 +627,12 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                               <img
                                 src={normalizePhotoUrl(photo.url) || "/placeholder.svg"}
                                 alt={`${profileUser.nickname} ${index + 1}`}
-                                onError={() => handleImageError(photo._id)}
-                                style={{ display: photoLoadError[photo._id] ? "none" : "block" }}
+                                onError={() =>
+                                  setPhotoLoadError((prev) => ({ ...prev, [photo._id]: true }))
+                                }
+                                style={{
+                                  display: photoLoadError[photo._id] ? "none" : "block",
+                                }}
                               />
                             )}
                             {photoLoadError[photo._id] && (
@@ -752,16 +651,17 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     <p>No photos available</p>
                   </div>
                 )}
+
                 <div className="profile-actions">
                   {!isOwnProfile && (
                     <>
                       <button
-                        className={`btn profile-action-btn ${isUserLiked && isUserLiked(profileUser._id) ? "liked" : ""}`}
+                        className={`btn profile-action-btn ${isUserLiked(profileUser._id) ? "liked" : ""}`}
                         onClick={handleLike}
                         disabled={isLiking}
                       >
                         {isLiking ? <FaSpinner className="spinner-icon" /> : <FaHeart />}
-                        <span>{isUserLiked && isUserLiked(profileUser._id) ? "Liked" : "Like"}</span>
+                        <span>{isUserLiked(profileUser._id) ? "Liked" : "Like"}</span>
                       </button>
                       <button
                         className="btn btn-primary profile-action-btn"
@@ -790,6 +690,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                   </div>
                 </div>
               </div>
+
               {/* Right: User Details */}
               <div className="profile-details-section">
                 <div className="user-headline">
@@ -823,6 +724,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     <span>Member since {new Date(profileUser.createdAt).toLocaleDateString()}</span>
                   </div>
                 </div>
+
                 {!isOwnProfile && (
                   <div className="compatibility-section">
                     <h2>Compatibility</h2>
@@ -836,10 +738,10 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                             cy="50"
                             r="45"
                             strokeDasharray="283"
-                            strokeDashoffset={283 - (283 * compatibility) / 100}
+                            strokeDashoffset={283 - (283 * calculateCompatibility()) / 100}
                           />
                         </svg>
-                        <div className="score-value">{compatibility}%</div>
+                        <div className="score-value">{calculateCompatibility()}%</div>
                       </div>
                       <div className="compatibility-details">
                         <div className="compatibility-factor">
@@ -848,8 +750,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                             <div
                               className="factor-fill"
                               style={{
-                                width:
-                                  profileUser.details?.location === currentUser?.details?.location ? "100%" : "30%",
+                                width: profileUser.details?.location === currentUser.details?.location ? "100%" : "30%",
                               }}
                             ></div>
                           </div>
@@ -861,9 +762,9 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                               className="factor-fill"
                               style={{
                                 width:
-                                  Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 5
+                                  Math.abs((profileUser.details?.age || 0) - (currentUser.details?.age || 0)) <= 5
                                     ? "90%"
-                                    : Math.abs((profileUser.details?.age || 0) - (currentUser?.details?.age || 0)) <= 10
+                                    : Math.abs((profileUser.details?.age || 0) - (currentUser.details?.age || 0)) <= 10
                                       ? "60%"
                                       : "30%",
                               }}
@@ -875,9 +776,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                           <div className="factor-bar">
                             <div
                               className="factor-fill"
-                              style={{
-                                width: `${Math.min(100, commonInterests.length * 20)}%`,
-                              }}
+                              style={{ width: `${Math.min(100, commonInterests.length * 20)}%` }}
                             ></div>
                           </div>
                         </div>
@@ -885,12 +784,14 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     </div>
                   </div>
                 )}
+
                 {profileUser.details?.bio && (
                   <div className="profile-section">
                     <h2>About Me</h2>
                     <p className="about-text">{profileUser.details.bio}</p>
                   </div>
                 )}
+
                 {profileUser.details?.iAm && (
                   <div className="profile-section">
                     <h2>I am a</h2>
@@ -943,6 +844,7 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                     </div>
                   </div>
                 )}
+
                 {profileUser.details?.interests?.length > 0 && (
                   <div className="profile-section">
                     <h2>Interests</h2>
@@ -969,15 +871,17 @@ const UserProfileModal = ({ userId, isOpen, onClose }) => {
                 )}
               </div>
             </div>
+
             {/* Embedded Chat */}
             {showChat && (
               <>
-                <div className="chat-overlay" onClick={handleCloseChat}></div>
-                <EmbeddedChat recipient={profileUser} isOpen={showChat} onClose={handleCloseChat} />
+                <div className="chat-overlay" onClick={() => setShowChat(false)}></div>
+                <EmbeddedChat recipient={profileUser} isOpen={showChat} onClose={() => setShowChat(false)} />
               </>
             )}
+
             {/* Stories Viewer */}
-            {showStories && <StoriesViewer userId={profileUser._id} onClose={handleCloseStories} />}
+            {showStories && <StoriesViewer userId={profileUser._id} onClose={() => setShowStories(false)} />}
           </div>
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FaSearch,
@@ -22,6 +22,7 @@ import StoriesViewer from "../components/Stories/StoriesViewer";
 import StoryCreator from "../components/Stories/StoryCreator";
 import UserProfileModal from "../components/UserProfileModal";
 
+// Production–ready Dashboard page component.
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -30,6 +31,7 @@ const Dashboard = () => {
   const { createStory } = useStories();
   const { likeUser, unlikeUser, isUserLiked } = useUser();
 
+  // Local state for filters, view toggles and modals.
   const [activeTab, setActiveTab] = useState("discover");
   const [showFilters, setShowFilters] = useState(false);
   const [filterValues, setFilterValues] = useState({
@@ -41,8 +43,6 @@ const Dashboard = () => {
     withPhotos: false,
     interests: [],
   });
-
-  // Chat, story, and profile modal state
   const [chatUser, setChatUser] = useState(null);
   const [showChat, setShowChat] = useState(false);
   const [viewMode, setViewMode] = useState("grid"); // "grid" or "list"
@@ -53,12 +53,22 @@ const Dashboard = () => {
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [showUserProfileModal, setShowUserProfileModal] = useState(false);
 
-  // Reset image error for a specific user
-  const handleImageError = useCallback((userId) => {
-    setImageLoadErrors((prev) => ({ ...prev, [userId]: true }));
-  }, []);
+  // Available interests for filtering.
+  const availableInterests = [
+    "Dating",
+    "Casual",
+    "Friendship",
+    "Long-term",
+    "Travel",
+    "Outdoors",
+    "Movies",
+    "Music",
+    "Fitness",
+    "Food",
+    "Art",
+  ];
 
-  // Fetch users on mount and refresh periodically when tab is visible.
+  // Fetch users on mount and set up refresh interval when page is visible.
   useEffect(() => {
     getUsers();
 
@@ -78,13 +88,13 @@ const Dashboard = () => {
     return () => {
       clearInterval(refreshInterval);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      // Close open chat when unmounting
+      // Clean up chat state on unmount.
       setShowChat(false);
       setChatUser(null);
     };
   }, [getUsers]);
 
-  // Filter and sort users efficiently.
+  // Filter users based on filter values.
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       if (u._id === user?._id) return false;
@@ -101,6 +111,7 @@ const Dashboard = () => {
     });
   }, [users, user, filterValues]);
 
+  // Sort filtered users: online first, then by last active.
   const sortedUsers = useMemo(() => {
     return [...filteredUsers].sort((a, b) => {
       if (a.isOnline && !b.isOnline) return -1;
@@ -109,90 +120,63 @@ const Dashboard = () => {
     });
   }, [filteredUsers]);
 
-  const availableInterests = [
-    "Dating",
-    "Casual",
-    "Friendship",
-    "Long-term",
-    "Travel",
-    "Outdoors",
-    "Movies",
-    "Music",
-    "Fitness",
-    "Food",
-    "Art",
-  ];
-
-  const toggleInterest = (interest) => {
+  // Toggle an interest in the filter.
+  const toggleInterest = useCallback((interest) => {
     setFilterValues((prev) => {
       if (prev.interests.includes(interest)) {
         return { ...prev, interests: prev.interests.filter((i) => i !== interest) };
       }
       return { ...prev, interests: [...prev.interests, interest] };
     });
-  };
+  }, []);
 
-  // Open the user profile modal.
-  const handleUserCardClick = (userId) => {
+  // Open user profile modal.
+  const handleUserCardClick = useCallback((userId) => {
     setSelectedUserId(userId);
     setShowUserProfileModal(true);
-  };
+  }, []);
 
   // Open chat with a user.
-  const handleMessageUser = (e, user) => {
+  const handleMessageUser = useCallback((e, matchedUser) => {
     e.stopPropagation();
-    setChatUser(user);
+    setChatUser(matchedUser);
     setShowChat(true);
-  };
+  }, []);
 
-  const closeChat = () => {
+  const closeChat = useCallback(() => {
     setShowChat(false);
     setChatUser(null);
-  };
+  }, []);
 
-  // Handle story creation ensuring no duplicate submissions.
-  const handleCreateStory = (storyData) => {
-    if (!createStory || creatingStory) {
-      toast.info(creatingStory ? "Story creation in progress, please wait..." : "Story creation is not available right now");
-      return;
-    }
-    setCreatingStory(true);
-    createStory(storyData)
-      .then((response) => {
-        if (response.success) {
-          toast.success("Your story has been created!");
-          setShowStoryCreator(false);
-        } else {
-          throw new Error(response.message || "Failed to create story");
-        }
-      })
-      .catch((error) => {
-        toast.error("Failed to create story: " + (error.message || "Unknown error"));
-      })
-      .finally(() => {
-        setCreatingStory(false);
-      });
-  };
-
-  // Reset image errors when filter values change.
-  useEffect(() => {
-    setImageLoadErrors({});
-  }, [filterValues]);
-
-  // Check for unread messages from a given user.
-  const hasUnreadMessagesFrom = useCallback(
-    (userId) =>
-      Array.isArray(unreadMessages) &&
-      unreadMessages.some((msg) => msg.sender === userId),
-    [unreadMessages]
-  );
-
-  const countUnreadMessages = useCallback(
-    (userId) =>
-      Array.isArray(unreadMessages)
-        ? unreadMessages.filter((msg) => msg.sender === userId).length
-        : 0,
-    [unreadMessages]
+  // Handle story creation.
+  const handleCreateStory = useCallback(
+    (storyData) => {
+      if (!createStory || creatingStory) {
+        toast.info(
+          creatingStory
+            ? "Story creation in progress, please wait..."
+            : "Story creation is not available right now"
+        );
+        return;
+      }
+      setCreatingStory(true);
+      createStory(storyData)
+        .then((response) => {
+          if (response.success) {
+            toast.success("Your story has been created!");
+            setShowStoryCreator(false);
+          } else {
+            throw new Error(response.message || "Failed to create story");
+          }
+        })
+        .catch((error) => {
+          toast.error("Failed to create story: " + (error.message || "Unknown error"));
+        })
+        .finally(() => {
+          setCreatingStory(false);
+        });
+    },
+    [createStory, creatingStory]
   );
 
   // Reset filter values.
@@ -208,17 +192,38 @@ const Dashboard = () => {
     });
   }, []);
 
-  const handleLikeUser = (e, matchedUser) => {
-    e.stopPropagation();
-    isUserLiked(matchedUser._id)
-      ? unlikeUser(matchedUser._id, matchedUser.nickname)
-      : likeUser(matchedUser._id, matchedUser.nickname);
-  };
+  // Like or unlike a user.
+  const handleLikeUser = useCallback(
+    (e, matchedUser) => {
+      e.stopPropagation();
+      if (isUserLiked(matchedUser._id)) {
+        unlikeUser(matchedUser._id, matchedUser.nickname);
+      } else {
+        likeUser(matchedUser._id, matchedUser.nickname);
+      }
+    },
+    [isUserLiked, likeUser, unlikeUser]
+  );
+
+  // Helpers to check unread messages from a user.
+  const hasUnreadMessagesFrom = useCallback(
+    (userId) =>
+      Array.isArray(unreadMessages) &&
+      unreadMessages.some((msg) => msg.sender === userId),
+    [unreadMessages]
+  );
+
+  const countUnreadMessages = useCallback(
+    (userId) =>
+      Array.isArray(unreadMessages)
+        ? unreadMessages.filter((msg) => msg.sender === userId).length
+        : 0,
+    [unreadMessages]
+  );
 
   return (
     <div className="modern-dashboard">
       <Navbar />
-
       <main className="dashboard-content">
         <div className="container">
           {/* Stories Section */}
@@ -239,16 +244,16 @@ const Dashboard = () => {
             </div>
             <StoriesCarousel
               onStoryClick={(storyId) => {
-                if (!viewingStoryId) {
-                  setViewingStoryId(storyId);
-                }
+                if (!viewingStoryId) setViewingStoryId(storyId);
               }}
             />
           </div>
 
           {/* Content Header with Filters and View Toggle */}
           <div className="content-header d-flex justify-content-between align-items-center">
-            <h1>{activeTab === "discover" ? "Discover People" : "Your Matches"}</h1>
+            <h1>
+              {activeTab === "discover" ? "Discover People" : "Your Matches"}
+            </h1>
             <div className="content-actions d-flex align-items-center gap-2">
               <div className="view-toggle d-none d-md-flex">
                 <button
@@ -270,7 +275,7 @@ const Dashboard = () => {
               </div>
               <div
                 className={`filter-button d-flex ${showFilters ? "active" : ""}`}
-                onClick={() => setShowFilters(!showFilters)}
+                onClick={() => setShowFilters((prev) => !prev)}
                 role="button"
                 tabIndex={0}
                 aria-expanded={showFilters}
@@ -301,7 +306,7 @@ const Dashboard = () => {
                       onChange={(e) =>
                         setFilterValues({
                           ...filterValues,
-                          ageMin: Number.parseInt(e.target.value),
+                          ageMin: Number.parseInt(e.target.value, 10),
                         })
                       }
                       className="range-input"
@@ -315,7 +320,7 @@ const Dashboard = () => {
                       onChange={(e) =>
                         setFilterValues({
                           ...filterValues,
-                          ageMax: Number.parseInt(e.target.value),
+                          ageMax: Number.parseInt(e.target.value, 10),
                         })
                       }
                       className="range-input"
@@ -340,7 +345,7 @@ const Dashboard = () => {
                       onChange={(e) =>
                         setFilterValues({
                           ...filterValues,
-                          distance: Number.parseInt(e.target.value),
+                          distance: Number.parseInt(e.target.value, 10),
                         })
                       }
                       className="range-input"
@@ -455,7 +460,10 @@ const Dashboard = () => {
                         <img
                           src={matchedUser.photos[0].url || "/placeholder.svg"}
                           alt={matchedUser.nickname}
-                          onError={() => handleImageError(matchedUser._id)}
+                          onError={() => setImageLoadErrors((prev) => ({
+                            ...prev,
+                            [matchedUser._id]: true,
+                          }))}
                           style={{
                             display: imageLoadErrors[matchedUser._id]
                               ? "none"
@@ -482,11 +490,12 @@ const Dashboard = () => {
                       <h3>
                         {matchedUser.nickname}, {matchedUser.details?.age || "?"}
                       </h3>
-                      {hasUnreadMessagesFrom(matchedUser._id) && (
-                        <span className="unread-badge">
-                          {countUnreadMessages(matchedUser._id)}
-                        </span>
-                      )}
+                      {unreadMessages &&
+                        unreadMessages.some((msg) => msg.sender === matchedUser._id) && (
+                          <span className="unread-badge">
+                            {unreadMessages.filter((msg) => msg.sender === matchedUser._id).length}
+                          </span>
+                        )}
                     </div>
                     <p className="location">
                       <FaMapMarkerAlt className="location-icon" />
@@ -495,13 +504,11 @@ const Dashboard = () => {
                     {matchedUser.details?.interests &&
                       matchedUser.details.interests.length > 0 && (
                         <div className="user-interests">
-                          {matchedUser.details.interests.slice(0, 3).map(
-                            (interest, idx) => (
-                              <span key={idx} className="interest-tag">
-                                {interest}
-                              </span>
-                            )
-                          )}
+                          {matchedUser.details.interests.slice(0, 3).map((interest, idx) => (
+                            <span key={idx} className="interest-tag">
+                              {interest}
+                            </span>
+                          ))}
                           {matchedUser.details.interests.length > 3 && (
                             <span className="interest-more">
                               +{matchedUser.details.interests.length - 3}
@@ -576,7 +583,10 @@ const Dashboard = () => {
 
       {/* Stories Viewer */}
       {viewingStoryId && (
-        <StoriesViewer storyId={viewingStoryId} onClose={() => setViewingStoryId(null)} />
+        <StoriesViewer
+          storyId={viewingStoryId}
+          onClose={() => setViewingStoryId(null)}
+        />
       )}
 
       {/* User Profile Modal */}

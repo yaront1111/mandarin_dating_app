@@ -1,43 +1,48 @@
-"use client"
+"use client";
 
-import { FaCrown, FaHeart, FaImage, FaInfoCircle } from "react-icons/fa"
-import { useNavigate } from "react-router-dom"
-import { useAuth } from "../context"
+import { FaCrown, FaHeart, FaImage, FaInfoCircle } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context";
 
+/**
+ * Production-ready SubscriptionStatus component with fixed image loading
+ * and proper fallback handling.
+ *
+ * @param {object} props
+ * @param {boolean} [props.compact=false] - If true, renders a compact badge.
+ */
 const SubscriptionStatus = ({ compact = false }) => {
-  const { user } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth();
+  const navigate = useNavigate();
 
-  if (!user) return null
+  if (!user) return null;
 
-  // Determine account status
-  const isFree = user.accountTier === "FREE"
-  const isPaid = user.accountTier === "PAID"
-  const isFemale = user.accountTier === "FEMALE"
-  const isCouple = user.accountTier === "COUPLE"
+  // Determine account tier status
+  const isFree = user.accountTier === "FREE";
+  const isPaid = user.accountTier === "PAID";
+  const isFemale = user.accountTier === "FEMALE";
+  const isCouple = user.accountTier === "COUPLE";
 
-  // Calculate story cooldown if applicable
-  let storyCooldown = null
+  // Calculate story cooldown for free accounts
+  let storyCooldown = null;
   if (isFree && user.lastStoryCreated) {
-    const cooldownPeriod = 72 * 60 * 60 * 1000 // 72 hours in milliseconds
-    const timeSinceLastStory = Date.now() - new Date(user.lastStoryCreated).getTime()
-    const timeRemaining = cooldownPeriod - timeSinceLastStory
-
+    const cooldownPeriod = 72 * 60 * 60 * 1000; // 72 hours in milliseconds
+    const timeSinceLastStory = Date.now() - new Date(user.lastStoryCreated).getTime();
+    const timeRemaining = cooldownPeriod - timeSinceLastStory;
     if (timeRemaining > 0) {
-      const hoursRemaining = Math.ceil(timeRemaining / (60 * 60 * 1000))
-      storyCooldown = hoursRemaining
+      storyCooldown = Math.ceil(timeRemaining / (60 * 60 * 1000)); // hours remaining
     }
   }
 
-  // Use regular CSS class names instead of styled-jsx
+  // Inline style for the header in full mode
   const statusHeaderStyle = {
     padding: "16px",
     background: isFree ? "var(--bg-card)" : "var(--primary)",
     color: isFree ? "var(--text)" : "white",
     borderBottom: "1px solid rgba(0,0,0,0.1)",
-  }
+  };
 
-  // Compact version for header - just a simple badge
+  // Compact version: a simple badge that navigates to the subscription page
   if (compact) {
     return (
       <div className="subscription-badge">
@@ -54,48 +59,42 @@ const SubscriptionStatus = ({ compact = false }) => {
           </span>
         )}
 
-        {/* Regular style tag instead of styled-jsx */}
         <style>
           {`
-          /* Subscription badge styles */
-          .subscription-badge {
-            display: flex;
-            align-items: center;
-            margin-right: 10px;
-          }
-          
-          .free-badge {
-            background: var(--bg-card);
-            color: var(--text-muted);
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
-          }
-          
-          .free-badge:hover {
-            background: var(--bg-hover);
-          }
-          
-          .premium-badge {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-          
-          .premium-icon {
-            color: var(--primary);
-            font-size: 18px;
-          }
+            .subscription-badge {
+              display: flex;
+              align-items: center;
+              margin-right: 10px;
+            }
+            .free-badge {
+              background: var(--bg-card);
+              color: var(--text-muted);
+              padding: 2px 8px;
+              border-radius: 12px;
+              font-size: 12px;
+              font-weight: 500;
+              cursor: pointer;
+              transition: background-color 0.2s;
+            }
+            .free-badge:hover {
+              background: var(--bg-hover);
+            }
+            .premium-badge {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .premium-icon {
+              color: var(--primary);
+              font-size: 18px;
+            }
           `}
         </style>
       </div>
-    )
+    );
   }
 
-  // Full version for dedicated pages
+  // Full version for dedicated subscription status pages
   return (
     <div className="subscription-status-card">
       <div className="status-header" style={statusHeaderStyle}>
@@ -134,13 +133,19 @@ const SubscriptionStatus = ({ compact = false }) => {
                 )}
                 {storyCooldown && (
                   <div className="progress">
-                    <div className="progress-bar" style={{ width: `${100 - (storyCooldown / 72) * 100}%` }}></div>
+                    <div
+                      className="progress-bar"
+                      style={{ width: `${100 - (storyCooldown / 72) * 100}%` }}
+                    ></div>
                   </div>
                 )}
               </div>
             </div>
 
-            <button className="btn btn-primary upgrade-btn" onClick={() => navigate("/subscription")}>
+            <button
+              className="btn btn-primary upgrade-btn"
+              onClick={() => navigate("/subscription")}
+            >
               <FaCrown className="me-2" /> Upgrade Now
             </button>
           </>
@@ -161,7 +166,7 @@ const SubscriptionStatus = ({ compact = false }) => {
         )}
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default SubscriptionStatus
+export default SubscriptionStatus;

@@ -1,6 +1,5 @@
 "use client"
 
-// client/src/pages/UserProfile.jsx
 import { useEffect, useState, useCallback, useRef } from "react"
 import {
   FaArrowLeft,
@@ -26,20 +25,18 @@ import {
 import { useParams, useNavigate } from "react-router-dom"
 import { useUser, useChat, useAuth, useStories } from "../context"
 import { EmbeddedChat } from "../components"
+import StoriesViewer from "../components/Stories/StoriesViewer"
+import StoryThumbnail from "../components/Stories/StoryThumbnail"
+import { toast } from "react-toastify"
+import apiService from "../services/apiService.jsx"
+import { normalizePhotoUrl } from "../utils/index.js"
 
-// Simple local Spinner component
+// Simple Spinner component
 const Spinner = () => (
   <div className="spinner">
     <FaSpinner className="spinner-icon" size={32} />
   </div>
 )
-import StoriesViewer from "../components/Stories/StoriesViewer"
-import StoryThumbnail from "../components/Stories/StoryThumbnail"
-import { toast } from "react-toastify"
-import apiService from "../services/apiService.jsx"
-
-// Import the normalizePhotoUrl utility
-import { normalizePhotoUrl } from "../utils/index.js"
 
 const UserProfile = () => {
   const { id } = useParams()
@@ -55,10 +52,12 @@ const UserProfile = () => {
     isUserLiked,
     error,
   } = useUser()
-  const {} = useChat() // Using empty destructuring to avoid missing methods
+  // FIX: Destructure sendMessage from useChat (needed for sending approval message)
+  const { sendMessage } = useChat()
   const { loadUserStories, hasUnviewedStories } = useStories()
-  const [userStories, setUserStories] = useState([])
 
+  // Local component state
+  const [userStories, setUserStories] = useState([])
   const [showChat, setShowChat] = useState(false)
   const [activePhotoIndex, setActivePhotoIndex] = useState(0)
   const [showActions, setShowActions] = useState(false)
@@ -69,17 +68,15 @@ const UserProfile = () => {
   const [photoLoadError, setPhotoLoadError] = useState({})
   const [isLiking, setIsLiking] = useState(false)
   const [isChatInitiating, setIsChatInitiating] = useState(false)
-  const profileRef = useRef(null)
   const [isRequestingAll, setIsRequestingAll] = useState(false)
   const [pendingRequests, setPendingRequests] = useState([])
   const [isLoadingRequests, setIsLoadingRequests] = useState(false)
   const [isProcessingApproval, setIsProcessingApproval] = useState(false)
 
-  // Check if the profile belongs to the current user
+  // Check if viewing own profile
   const isOwnProfile = currentUser && profileUser && currentUser._id === profileUser._id
 
-  // Load user data
-  // Add a mounted ref to prevent state updates after component unmount
+  // Mounted ref to avoid state updates after unmount
   const isMountedRef = useRef(true)
   useEffect(() => {
     return () => {
@@ -87,16 +84,14 @@ const UserProfile = () => {
     }
   }, [])
 
-  // Update the useEffect to use the mounted ref
+  // Fetch user data, stories, photo permissions, and pending requests when id changes
   useEffect(() => {
     if (id) {
       getUser(id)
-
-      // Load user stories safely
       try {
         loadUserStories?.(id)
           .then((stories) => {
-            if (isMountedRef.current && stories && Array.isArray(stories)) {
+            if (isMountedRef.current && Array.isArray(stories)) {
               setUserStories(stories)
             }
           })
@@ -104,16 +99,12 @@ const UserProfile = () => {
       } catch (error) {
         console.log("Stories functionality not available")
       }
-
       fetchPhotoPermissions()
-
-      // If viewing own profile, fetch pending requests
       if (currentUser && currentUser._id === id) {
         fetchPendingRequests()
       }
     }
-
-    // Reset states when user changes
+    // Reset UI states when user changes
     setActivePhotoIndex(0)
     setShowAllInterests(false)
     setShowActions(false)
@@ -131,27 +122,20 @@ const UserProfile = () => {
   // Fetch pending photo access requests for the current user
   const fetchPendingRequests = async () => {
     if (!currentUser) return
-
     setIsLoadingRequests(true)
     try {
       const response = await apiService.get("/users/photos/permissions?status=pending")
       if (response.success) {
-        // Group requests by user
+        // Group requests by requester
         const requestsByUser = {}
         response.data.forEach((request) => {
           const userId = request.requestedBy._id
           if (!requestsByUser[userId]) {
-            requestsByUser[userId] = {
-              user: request.requestedBy,
-              requests: [],
-            }
+            requestsByUser[userId] = { user: request.requestedBy, requests: [] }
           }
           requestsByUser[userId].requests.push(request)
         })
-
-        // Convert to array
-        const groupedRequests = Object.values(requestsByUser)
-        setPendingRequests(groupedRequests)
+        setPendingRequests(Object.values(requestsByUser))
       }
     } catch (error) {
       console.error("Error fetching pending requests:", error)
@@ -161,20 +145,19 @@ const UserProfile = () => {
     }
   }
 
-  // Handle approving all requests from a specific user
-  const handleApproveAllRequests = async (userId, requests) => {
+  // Handle approval of all pending requests from a specific requester.
+  // Note: The first parameter here is the requester’s ID.
+  const handleApproveAllRequests = async (requesterId, requests) => {
     setIsProcessingApproval(true)
-
     try {
       const results = await Promise.allSettled(
         requests.map((request) =>
-          apiService.put(`/users/photos/permissions/${request._id}`, {
-            status: "approved",
-          }),
+          apiService.put(`/users/photos/permissions/${request._id}`, { status: "approved" }),
         ),
       )
-
-      const successCount = results.filter((result) => result.status === "fulfilled" && result.value.success).length
+      const successCount = results.filter(
+        (result) => result.status === "fulfilled" && result.value.success,
+      ).length
 
       if (successCount === requests.length) {
         toast.success(`Approved all photo requests from this user`)
@@ -183,8 +166,11 @@ const UserProfile = () => {
       } else {
         toast.error("Failed to approve photo requests")
       }
-
-      // Refresh the pending requests
+      // Send a message to the requester if sendMessage is available.
+      if (sendMessage) {
+        // Using requesterId here as the recipient of the approval message.
+        await sendMessage(requesterId, "text", `I've approved your request to view my private photos.`)
+      }
       fetchPendingRequests()
     } catch (error) {
       console.error("Error approving requests:", error)
@@ -194,20 +180,18 @@ const UserProfile = () => {
     }
   }
 
-  // Handle rejecting all requests from a specific user
-  const handleRejectAllRequests = async (userId, requests) => {
+  // Handle rejection of all pending requests from a specific requester.
+  const handleRejectAllRequests = async (requesterId, requests) => {
     setIsProcessingApproval(true)
-
     try {
       const results = await Promise.allSettled(
         requests.map((request) =>
-          apiService.put(`/users/photos/permissions/${request._id}`, {
-            status: "rejected",
-          }),
+          apiService.put(`/users/photos/permissions/${request._id}`, { status: "rejected" }),
         ),
       )
-
-      const successCount = results.filter((result) => result.status === "fulfilled" && result.value.success).length
+      const successCount = results.filter(
+        (result) => result.status === "fulfilled" && result.value.success,
+      ).length
 
       if (successCount === requests.length) {
         toast.success(`Rejected all photo requests from this user`)
@@ -216,8 +200,6 @@ const UserProfile = () => {
       } else {
         toast.error("Failed to reject photo requests")
       }
-
-      // Refresh the pending requests
       fetchPendingRequests()
     } catch (error) {
       console.error("Error rejecting requests:", error)
@@ -227,72 +209,41 @@ const UserProfile = () => {
     }
   }
 
-  // Improved handleRequestAccess function to handle multiple photo requests
-  // Fix the handleRequestAccess function to properly handle API responses and prevent race conditions
+  // Handle requesting access for an individual photo
   const handleRequestAccess = async (photoId, e) => {
     if (e) e.stopPropagation()
     if (!profileUser || !photoId) return
-
-    // Set loading state for this specific photo
-    setLoadingPermissions((prev) => ({
-      ...prev,
-      [photoId]: true,
-    }))
-
+    setLoadingPermissions((prev) => ({ ...prev, [photoId]: true }))
     try {
-      // Make a direct API call
       const response = await apiService.post(`/users/photos/${photoId}/request`, {
         userId: profileUser._id,
       })
-
       if (response.success) {
-        // Update the local permission status immediately for better UX
-        setPermissionStatus((prev) => ({
-          ...prev,
-          [photoId]: "pending",
-        }))
-
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }))
         toast.success("Photo access requested")
       } else if (response.message && response.message.includes("already exists")) {
-        // If there's an error but it's just that the request already exists
-        setPermissionStatus((prev) => ({
-          ...prev,
-          [photoId]: "pending",
-        }))
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }))
         toast.info("Access request already sent for this photo")
       } else {
         throw new Error(response.error || "Failed to request access")
       }
     } catch (error) {
       console.error("Error requesting photo access:", error)
-
-      // Check if the error is about an existing request
       if (error.message && error.message.includes("already exists")) {
-        setPermissionStatus((prev) => ({
-          ...prev,
-          [photoId]: "pending",
-        }))
+        setPermissionStatus((prev) => ({ ...prev, [photoId]: "pending" }))
         toast.info("Access request already sent for this photo")
       } else {
         toast.error(error.message || "Failed to request photo access")
       }
     } finally {
-      // Clear loading state for this specific photo
-      setLoadingPermissions((prev) => ({
-        ...prev,
-        [photoId]: false,
-      }))
-
-      // Refresh all permissions to ensure we have the latest data
+      setLoadingPermissions((prev) => ({ ...prev, [photoId]: false }))
       fetchPhotoPermissions()
     }
   }
 
-  // Improved fetchPhotoPermissions function
-  // Fix the fetchPhotoPermissions function to handle errors properly
+  // Fetch photo permissions for the profile
   const fetchPhotoPermissions = async () => {
     if (!id) return
-
     try {
       const response = await apiService.get(`/users/${id}/photo-permissions`)
       if (response.success) {
@@ -300,7 +251,6 @@ const UserProfile = () => {
         response.data.forEach((permission) => {
           statusMap[permission.photo] = permission.status
         })
-
         setPermissionStatus(statusMap)
       } else {
         console.error("Error fetching permissions:", response.error)
@@ -311,23 +261,18 @@ const UserProfile = () => {
   }
 
   // Handle image loading errors
-  // Fix the handleImageError function to properly handle image loading errors
   const handleImageError = useCallback((photoId) => {
-    setPhotoLoadError((prev) => ({
-      ...prev,
-      [photoId]: true,
-    }))
+    setPhotoLoadError((prev) => ({ ...prev, [photoId]: true }))
   }, [])
 
-  // Go back to previous page
+  // Navigate back to the dashboard
   const handleBack = () => {
     navigate("/dashboard")
   }
 
-  // Handle liking/unliking users
+  // Toggle like/unlike for the profile user
   const handleLike = async () => {
     if (!profileUser || isLiking) return
-
     setIsLiking(true)
     try {
       if (isUserLiked(profileUser._id)) {
@@ -342,32 +287,28 @@ const UserProfile = () => {
     }
   }
 
-  // Handle starting chat
+  // Handle opening the embedded chat
   const handleMessage = () => {
     setIsChatInitiating(true)
-    // Simply open the chat dialog without using the initiateChat function
+    // Simply open the chat dialog after a short delay
     setTimeout(() => {
       setShowChat(true)
       setIsChatInitiating(false)
-    }, 500) // Small delay to show the loading state
+    }, 500)
   }
 
-  // Close chat window
   const handleCloseChat = () => {
     setShowChat(false)
   }
 
-  // View user stories
   const handleViewStories = () => {
     setShowStories(true)
   }
 
-  // Close stories viewer
   const handleCloseStories = () => {
     setShowStories(false)
   }
 
-  // Navigate through photos
   const nextPhoto = () => {
     if (profileUser?.photos && activePhotoIndex < profileUser.photos.length - 1) {
       setActivePhotoIndex(activePhotoIndex + 1)
@@ -380,33 +321,22 @@ const UserProfile = () => {
     }
   }
 
-  // Calculate compatibility score between users
+  // Calculate compatibility score between current user and profile user
   const calculateCompatibility = () => {
     if (!profileUser || !profileUser.details || !currentUser || !currentUser.details) return 0
-
     let score = 0
-
-    // Location
-    if (profileUser.details.location === currentUser.details.location) {
-      score += 25
-    }
-
-    // Age proximity
+    if (profileUser.details.location === currentUser.details.location) score += 25
     const ageDiff = Math.abs((profileUser.details.age || 0) - (currentUser.details.age || 0))
     if (ageDiff <= 5) score += 25
     else if (ageDiff <= 10) score += 15
     else score += 5
-
-    // Interests
     const profileInterests = profileUser.details?.interests || []
     const userInterests = currentUser.details?.interests || []
     const commonInterests = profileInterests.filter((i) => userInterests.includes(i))
     score += Math.min(50, commonInterests.length * 10)
-
     return Math.min(100, score)
   }
 
-  // Handle errors and loading states
   if (loading) {
     return (
       <div className="loading-container">
@@ -442,53 +372,43 @@ const UserProfile = () => {
 
   const compatibility = calculateCompatibility()
   const commonInterests =
-    profileUser.details?.interests?.filter((interest) => currentUser.details?.interests?.includes(interest)) || []
+    profileUser.details?.interests?.filter((interest) =>
+      currentUser.details?.interests?.includes(interest),
+    ) || []
 
-  // Request access to all private photos at once
-  // Fix the handleRequestAccessToAllPhotos function to handle errors properly
+  // Handle requesting access to all private photos at once
   const handleRequestAccessToAllPhotos = async () => {
     if (!profileUser || !profileUser.photos) return
-
-    // Find all private photos that don't have approved access
     const privatePhotos = profileUser.photos.filter(
-      (photo) => photo.isPrivate && (!permissionStatus[photo._id] || permissionStatus[photo._id] !== "approved"),
+      (photo) =>
+        photo.isPrivate &&
+        (!permissionStatus[photo._id] || permissionStatus[photo._id] !== "approved"),
     )
-
     if (privatePhotos.length === 0) {
       toast.info("No private photos to request access to")
       return
     }
-
-    // Set loading state
     setIsRequestingAll(true)
-
     try {
-      // Request access to each photo
       const results = await Promise.allSettled(
         privatePhotos.map((photo) =>
-          apiService.post(`/users/photos/${photo._id}/request`, {
-            userId: profileUser._id,
-          }),
+          apiService.post(`/users/photos/${photo._id}/request`, { userId: profileUser._id }),
         ),
       )
-
-      // Count successful requests
-      const successCount = results.filter((result) => result.status === "fulfilled" && result.value.success).length
-
-      // Count already pending requests
+      const successCount = results.filter(
+        (result) => result.status === "fulfilled" && result.value.success,
+      ).length
       const pendingCount = results.filter(
         (result) =>
-          result.status === "fulfilled" && result.value.message && result.value.message.includes("already exists"),
+          result.status === "fulfilled" &&
+          result.value.message &&
+          result.value.message.includes("already exists"),
       ).length
-
-      // Update UI for all photos
       const newPermissionStatus = { ...permissionStatus }
       privatePhotos.forEach((photo) => {
         newPermissionStatus[photo._id] = "pending"
       })
       setPermissionStatus(newPermissionStatus)
-
-      // Show appropriate message
       if (successCount > 0 && pendingCount > 0) {
         toast.success(`Requested access to ${successCount} photos. ${pendingCount} already pending.`)
       } else if (successCount > 0) {
@@ -496,8 +416,6 @@ const UserProfile = () => {
       } else if (pendingCount > 0) {
         toast.info("Access requests already sent for all photos")
       }
-
-      // Refresh permissions to ensure we have the latest data
       fetchPhotoPermissions()
     } catch (error) {
       console.error("Error requesting photo access:", error)
@@ -507,10 +425,7 @@ const UserProfile = () => {
     }
   }
 
-  // Check if there's a pending request from the current profile user
   const hasPendingRequestFromUser = pendingRequests.some((item) => item.user._id === profileUser._id)
-
-  // Get the pending requests from the current profile user
   const currentUserRequests = pendingRequests.find((item) => item.user._id === profileUser._id)
 
   return (
@@ -520,7 +435,7 @@ const UserProfile = () => {
           <FaArrowLeft /> Back to Discover
         </button>
 
-        {/* Show pending requests notification if this user has requested access to your photos */}
+        {/* Pending requests notification */}
         {!isOwnProfile && hasPendingRequestFromUser && currentUserRequests && (
           <div className="pending-requests-notification">
             <div className="notification-content">
@@ -552,9 +467,8 @@ const UserProfile = () => {
         )}
 
         <div className="profile-layout">
-          {/* Left: Photos */}
+          {/* Photos & Stories Section */}
           <div className="profile-photos-section">
-            {/* Stories Thumbnail */}
             {userStories && userStories.length > 0 && (
               <div className="profile-stories">
                 <StoryThumbnail
@@ -680,11 +594,11 @@ const UserProfile = () => {
                     <span>Message</span>
                   </button>
 
-                  {/* Add the Request Access to All Photos button */}
                   {profileUser.photos &&
                     profileUser.photos.some(
                       (photo) =>
-                        photo.isPrivate && (!permissionStatus[photo._id] || permissionStatus[photo._id] !== "approved"),
+                        photo.isPrivate &&
+                        (!permissionStatus[photo._id] || permissionStatus[photo._id] !== "approved"),
                     ) && (
                       <button
                         className="btn btn-secondary profile-action-btn"
@@ -716,7 +630,7 @@ const UserProfile = () => {
             </div>
           </div>
 
-          {/* Right: User Details */}
+          {/* Profile Details Section */}
           <div className="profile-details-section">
             <div className="user-headline">
               <h1>
@@ -752,7 +666,7 @@ const UserProfile = () => {
               </div>
             </div>
 
-            {/* Show pending photo requests section if viewing own profile */}
+            {/* Pending photo access requests (only if viewing own profile) */}
             {isOwnProfile && pendingRequests.length > 0 && (
               <div className="pending-requests-section">
                 <h2>Photo Access Requests</h2>
@@ -814,10 +728,10 @@ const UserProfile = () => {
                         cy="50"
                         r="45"
                         strokeDasharray="283"
-                        strokeDashoffset={283 - (283 * compatibility) / 100}
+                        strokeDashoffset={283 - (283 * calculateCompatibility()) / 100}
                       />
                     </svg>
-                    <div className="score-value">{compatibility}%</div>
+                    <div className="score-value">{calculateCompatibility()}%</div>
                   </div>
                   <div className="compatibility-details">
                     <div className="compatibility-factor">
@@ -874,17 +788,18 @@ const UserProfile = () => {
               <div className="profile-section">
                 <h2>Interests</h2>
                 <div className="interests-tags">
-                  {(showAllInterests ? profileUser.details.interests : profileUser.details.interests.slice(0, 8)).map(
-                    (interest) => (
-                      <span
-                        key={interest}
-                        className={`interest-tag ${commonInterests.includes(interest) ? "common" : ""}`}
-                      >
-                        {interest}
-                        {commonInterests.includes(interest) && <FaCheck className="common-icon" />}
-                      </span>
-                    ),
-                  )}
+                  {(showAllInterests
+                    ? profileUser.details.interests
+                    : profileUser.details.interests.slice(0, 8)
+                  ).map((interest) => (
+                    <span
+                      key={interest}
+                      className={`interest-tag ${commonInterests.includes(interest) ? "common" : ""}`}
+                    >
+                      {interest}
+                      {commonInterests.includes(interest) && <FaCheck className="common-icon" />}
+                    </span>
+                  ))}
                   {!showAllInterests && profileUser.details.interests.length > 8 && (
                     <button className="show-more-interests" onClick={() => setShowAllInterests(true)}>
                       +{profileUser.details.interests.length - 8} more
@@ -959,8 +874,8 @@ const UserProfile = () => {
         {/* Embedded Chat */}
         {showChat && (
           <>
-            <div className="chat-overlay" onClick={handleCloseChat}></div>
-            <EmbeddedChat recipient={profileUser} isOpen={showChat} onClose={handleCloseChat} />
+            <div className="chat-overlay" onClick={() => setShowChat(false)}></div>
+            <EmbeddedChat recipient={profileUser} isOpen={showChat} onClose={() => setShowChat(false)} />
           </>
         )}
 

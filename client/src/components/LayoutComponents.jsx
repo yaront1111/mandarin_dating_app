@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth, useNotifications } from "../context";
 import { toast } from "react-toastify";
 import {
   FaUserCircle,
@@ -16,15 +15,12 @@ import {
   FaImage,
 } from "react-icons/fa";
 import { ThemeToggle } from "./theme-toggle.tsx";
-import "../styles/notifications.css"; // Import the notifications styles
+import { useAuth, useNotifications } from "../context";
+import "../styles/notifications.css";
 
-/**
- * Navbar Component
- *
- * Renders the modern header with logo, navigation tabs,
- * a notification button with dropdown, and a user avatar dropdown.
- * All visual styling is handled by external CSS.
- */
+// ---------------------------------------------------------------------------
+// Navbar Component
+// ---------------------------------------------------------------------------
 export const Navbar = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -32,6 +28,7 @@ export const Navbar = () => {
   const notificationDropdownRef = useRef(null);
   const userDropdownRef = useRef(null);
   const notificationButtonRef = useRef(null);
+
   const {
     notifications,
     unreadCount,
@@ -44,25 +41,28 @@ export const Navbar = () => {
   const navigate = useNavigate();
 
   // Handler: Logout
-  const handleLogout = async (e) => {
-    e.preventDefault();
-    await logout();
-  };
+  const handleLogout = useCallback(
+    async (e) => {
+      e.preventDefault();
+      await logout();
+    },
+    [logout]
+  );
 
   // Handler: Navigate to profile
   const navigateToProfile = useCallback(() => {
     navigate("/profile");
   }, [navigate]);
 
-  // Toggle notification dropdown; close user dropdown.
+  // Toggle notification dropdown and close user dropdown
   const toggleNotificationDropdown = useCallback((e) => {
-    e?.preventDefault();
-    e?.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
     setShowNotifications((prev) => !prev);
     setShowUserDropdown(false);
   }, []);
 
-  // Toggle user dropdown; close notification dropdown.
+  // Toggle user dropdown and close notifications
   const toggleUserDropdown = useCallback((e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -70,7 +70,7 @@ export const Navbar = () => {
     setShowNotifications(false);
   }, []);
 
-  // Close dropdowns when clicking outside.
+  // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (
@@ -93,15 +93,18 @@ export const Navbar = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Add a test notification (for development/testing).
-  const handleAddTestNotification = useCallback((e) => {
-    e?.stopPropagation();
-    setNotificationPulse(true);
-    setTimeout(() => setNotificationPulse(false), 2000);
-    addTestNotification();
-  }, [addTestNotification]);
+  // Add test notification for development/testing
+  const handleAddTestNotification = useCallback(
+    (e) => {
+      e?.stopPropagation();
+      setNotificationPulse(true);
+      setTimeout(() => setNotificationPulse(false), 2000);
+      addTestNotification();
+    },
+    [addTestNotification]
+  );
 
-  // Format notification time for display.
+  // Format notification time for display
   const formatNotificationTime = useCallback((timestamp) => {
     if (!timestamp) return "Just now";
     const now = new Date();
@@ -118,7 +121,7 @@ export const Navbar = () => {
     return notificationTime.toLocaleDateString();
   }, []);
 
-  // Determine action text for notifications.
+  // Determine action text based on notification type
   const getNotificationAction = useCallback((notification) => {
     switch (notification.type) {
       case "message":
@@ -140,7 +143,7 @@ export const Navbar = () => {
     }
   }, []);
 
-  // Render notifications list.
+  // Render notifications list
   const renderNotifications = useCallback(() => {
     if (loadingNotifications) {
       return (
@@ -167,7 +170,8 @@ export const Navbar = () => {
       );
     }
     return validNotifications.map((notification) => {
-      const notificationMessage = notification.message || notification.title || notification.content || "New notification";
+      const notificationMessage =
+        notification.message || notification.title || notification.content || "New notification";
       const senderNickname =
         notification.sender?.nickname ||
         notification.data?.sender?.nickname ||
@@ -179,13 +183,18 @@ export const Navbar = () => {
       let NotificationIcon = FaBell;
       if (notification.type === "message") NotificationIcon = FaEnvelope;
       if (notification.type === "like") NotificationIcon = FaHeart;
-      if (notification.type === "photoRequest" || notification.type === "photoResponse") NotificationIcon = FaCamera;
+      if (notification.type === "photoRequest" || notification.type === "photoResponse")
+        NotificationIcon = FaCamera;
       if (notification.type === "story") NotificationIcon = FaImage;
-      const isNew = notification.createdAt && new Date().getTime() - new Date(notification.createdAt).getTime() < 60000;
+      const isNew =
+        notification.createdAt &&
+        new Date().getTime() - new Date(notification.createdAt).getTime() < 60000;
       return (
         <div
           key={notification._id || notification.id || Date.now()}
-          className={`notification-item ${!notification.read ? "unread" : ""} ${isNew ? "new-notification" : ""}`}
+          className={`notification-item ${!notification.read ? "unread" : ""} ${
+            isNew ? "new-notification" : ""
+          }`}
           onClick={() => handleNotificationClick(notification)}
         >
           <div className="notification-icon">
@@ -193,7 +202,8 @@ export const Navbar = () => {
           </div>
           <div className="notification-content">
             <div className="notification-title">
-              <span className="notification-sender">{senderNickname}</span> {getNotificationAction(notification)}
+              <span className="notification-sender">{senderNickname}</span>{" "}
+              {getNotificationAction(notification)}
             </div>
             <div className="notification-message">{notificationMessage}</div>
             <div className="notification-time">
@@ -205,13 +215,23 @@ export const Navbar = () => {
         </div>
       );
     });
-  }, [notifications, loadingNotifications, formatNotificationTime, getNotificationAction, handleAddTestNotification, handleNotificationClick]);
+  }, [
+    notifications,
+    loadingNotifications,
+    formatNotificationTime,
+    getNotificationAction,
+    handleAddTestNotification,
+    handleNotificationClick,
+  ]);
 
-  const handleMarkAllAsRead = useCallback((e) => {
-    e.stopPropagation();
-    markAllAsRead();
-    toast.success("All notifications marked as read");
-  }, [markAllAsRead]);
+  const handleMarkAllAsRead = useCallback(
+    (e) => {
+      e.stopPropagation();
+      markAllAsRead();
+      toast.success("All notifications marked as read");
+    },
+    [markAllAsRead]
+  );
 
   return (
     <header className="modern-header">
@@ -221,18 +241,22 @@ export const Navbar = () => {
           Mandarin
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs (visible on medium screens and up) */}
         {isAuthenticated && (
           <div className="main-tabs d-none d-md-flex">
             <button
-              className={`tab-button ${window.location.pathname === "/dashboard" ? "active" : ""}`}
+              className={`tab-button ${
+                window.location.pathname === "/dashboard" ? "active" : ""
+              }`}
               onClick={() => navigate("/dashboard")}
             >
               <FaSearch className="tab-icon" />
               <span>Discover</span>
             </button>
             <button
-              className={`tab-button ${window.location.pathname === "/matches" ? "active" : ""}`}
+              className={`tab-button ${
+                window.location.pathname === "/matches" ? "active" : ""
+              }`}
               onClick={() => navigate("/matches")}
             >
               <FaHeart className="tab-icon" />
@@ -266,7 +290,10 @@ export const Navbar = () => {
                     <div className="notification-header">
                       <span>Notifications</span>
                       {unreadCount > 0 && (
-                        <span className="notification-header-action" onClick={handleMarkAllAsRead}>
+                        <span
+                          className="notification-header-action"
+                          onClick={handleMarkAllAsRead}
+                        >
                           Mark all as read
                         </span>
                       )}
@@ -325,12 +352,9 @@ export const Navbar = () => {
   );
 };
 
-/**
- * Alert Component
- *
- * Displays an alert message with optional action buttons.
- * If the type is "toast", it triggers a toast notification.
- */
+// ---------------------------------------------------------------------------
+// Alert Component
+// ---------------------------------------------------------------------------
 export const Alert = ({ type, message, onClose, actions }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -397,7 +421,11 @@ export const Alert = ({ type, message, onClose, actions }) => {
       {actions && (
         <div className="alert-actions">
           {actions.map((action, index) => (
-            <button key={index} className={`btn btn-sm ${action.type ? `btn-${action.type}` : "btn-primary"}`} onClick={action.action}>
+            <button
+              key={index}
+              className={`btn btn-sm ${action.type ? `btn-${action.type}` : "btn-primary"}`}
+              onClick={action.action}
+            >
               {action.label}
             </button>
           ))}
@@ -412,56 +440,7 @@ export const Alert = ({ type, message, onClose, actions }) => {
   );
 };
 
-/**
- * PrivateRoute Component
- *
- * Protects routes by ensuring that the user is authenticated.
- * If the user is not authenticated, it redirects to the login page.
- */
-export const PrivateRoute = ({ children }) => {
-  const { isAuthenticated, loading, error } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      navigate("/login", {
-        replace: true,
-        state: { from: window.location.pathname },
-      });
-    }
-  }, [isAuthenticated, loading, navigate]);
-
-  if (loading) {
-    return (
-      <div className="loading-container">
-        <div className="spinner spinner-dark"></div>
-        <p className="loading-text">Loading...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    const errorMessage =
-      typeof error === "object" && error !== null ? error.message || JSON.stringify(error) : String(error || "Authentication error");
-    return (
-      <div className="auth-error">
-        <div className="auth-error-content">
-          <FaExclamationTriangle className="auth-error-icon" />
-          <h3>Authentication Error</h3>
-          <p>{errorMessage}</p>
-          <button onClick={() => navigate("/login")} className="btn btn-primary">
-            Go to Login
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  return isAuthenticated ? children : null;
-};
-
 export default {
   Navbar,
   Alert,
-  PrivateRoute,
 };

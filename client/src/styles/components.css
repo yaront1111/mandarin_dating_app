@@ -2375,3 +2375,92 @@
     max-width: 200px;
   }
 }
+
+.incoming-call-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.incoming-call-container {
+  background-color: #fff;
+  border-radius: 8px;
+  width: 300px;
+  max-width: 90%;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.incoming-call-header {
+  background-color: #4a90e2;
+  color: white;
+  padding: 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.incoming-call-body {
+  padding: 20px;
+  text-align: center;
+}
+
+.incoming-call-actions {
+  display: flex;
+  border-top: 1px solid #eee;
+}
+
+.incoming-call-actions button {
+  flex: 1;
+  padding: 12px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.reject-call-btn {
+  background-color: #f44336;
+  color: white;
+}
+
+.accept-call-btn {
+  background-color: #4caf50;
+  color: white;
+}
+
+.active-call-banner {
+  background-color: #4a90e2;
+  color: white;
+  padding: 8px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.end-call-btn {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.call-icon {
+  font-size: 1.2em;
+}

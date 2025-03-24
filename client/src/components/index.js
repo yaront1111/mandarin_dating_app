@@ -1,41 +1,32 @@
-// client/src/components/index.js
-// Import all components and re-export them for easier imports throughout the app
+"use client";
 
 // Layout Components
-import { Navbar, Alert, PrivateRoute as LayoutPrivateRoute } from "./LayoutComponents"
-
+import { Navbar, Alert as LayoutAlert } from "./LayoutComponents";
 // User Components
-import { UserCard, UserPhotoGallery, UserPhotoViewer, UserList, UserFilter } from "./UserComponents"
+import { UserCard, UserPhotoGallery, UserPhotoViewer, UserList, UserFilter } from "./UserComponents";
 
 // Chat Components
-// Fixing the imports for Chat components
-import EmbeddedChat from "./EmbeddedChat"
-
-// We'll skip importing Spinner if it doesn't exist as a direct file
+import EmbeddedChat from "./EmbeddedChat";
 
 // Stories Components
-import StoriesCarousel from "./Stories/StoriesCarousel"
-import StoriesViewer from "./Stories/StoriesViewer"
-import StoryCreator from "./Stories/StoryCreator"
-import StoryThumbnail from "./Stories/StoryThumbnail"
+import StoriesCarousel from "./Stories/StoriesCarousel";
+import StoriesViewer from "./Stories/StoriesViewer";
+import StoryCreator from "./Stories/StoryCreator";
+import StoryThumbnail from "./Stories/StoryThumbnail";
 
 // Error Boundary
-import ErrorBoundary from "./ErrorBoundary"
-
-// Import from PrivateRoute.jsx which is our main implementation
-import PrivateRoute from "./PrivateRoute.jsx"
+import ErrorBoundary from "./ErrorBoundary";
 
 // Theme Toggle
-import { ThemeToggle } from "./theme-toggle.tsx"
+import { ThemeToggle } from "./theme-toggle.tsx";
 
 // User Profile Modal
-import UserProfileModal from "./UserProfileModal"
+import UserProfileModal from "./UserProfileModal";
 
 export {
   // Layout Components
   Navbar,
-  Alert,
-  LayoutPrivateRoute,
+  LayoutAlert as Alert,
   // User Components
   UserCard,
   UserPhotoGallery,
@@ -51,10 +42,8 @@ export {
   StoryThumbnail,
   // Error Boundary
   ErrorBoundary,
-  // Auth Components
-  PrivateRoute,
   // Theme Toggle
   ThemeToggle,
   // User Profile Modal
   UserProfileModal,
-}
+};

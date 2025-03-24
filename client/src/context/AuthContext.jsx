@@ -20,7 +20,7 @@ import {
 // Create AuthContext
 const AuthContext = createContext();
 
-// Custom hook for easy access to AuthContext
+// Custom hook for accessing AuthContext
 export const useAuth = () => useContext(AuthContext);
 
 /**
@@ -35,18 +35,18 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Refs to manage token refresh timers and promises
+  // Refs to manage token refresh and auth check timers
   const refreshTokenPromiseRef = useRef(null);
   const tokenRefreshTimerRef = useRef(null);
   const authCheckTimeoutRef = useRef(null);
-  // Ref to always have the latest version of refreshToken
+  // Ref to always have the latest refreshToken function
   const refreshTokenRef = useRef();
 
-  // Clears any error
+  // Clear any authentication error
   const clearError = useCallback(() => setError(null), []);
 
   /**
-   * logout: Clears token, resets user and auth status.
+   * logout: Clears the token, resets user and auth state.
    */
   const logout = useCallback(async () => {
     setLoading(true);
@@ -55,7 +55,6 @@ export const AuthProvider = ({ children }) => {
       tokenRefreshTimerRef.current = null;
     }
     try {
-      // Use apiService to call logout endpoint
       await apiService.post("/auth/logout");
     } catch (err) {
       console.warn("Logout API call failed:", err);
@@ -69,7 +68,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   /**
-   * refreshToken: Refreshes the authentication token.
+   * refreshToken: Refreshes the auth token.
    * Returns a promise resolving to the new token.
    */
   const refreshToken = useCallback(() => {
@@ -126,8 +125,7 @@ export const AuthProvider = ({ children }) => {
   }, [refreshToken]);
 
   /**
-   * scheduleTokenRefresh: Schedules a token refresh five minutes before token expiry.
-   * It calls the current refreshToken function stored in refreshTokenRef.
+   * scheduleTokenRefresh: Schedules a token refresh 5 minutes before expiry.
    */
   const scheduleTokenRefresh = useCallback((token) => {
     if (tokenRefreshTimerRef.current) {
@@ -141,7 +139,7 @@ export const AuthProvider = ({ children }) => {
       if (payload.exp) {
         const expiresAt = payload.exp * 1000;
         const now = Date.now();
-        const timeUntilRefresh = expiresAt - now - 5 * 60 * 1000; // refresh 5 minutes before expiry
+        const timeUntilRefresh = expiresAt - now - 5 * 60 * 1000; // 5 minutes before expiry
         if (timeUntilRefresh > 60000) {
           console.log(
             `Scheduling token refresh in ${Math.round(timeUntilRefresh / 60000)} minute(s)`
@@ -180,19 +178,12 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       console.error("Registration error:", err);
-      if (err.response && err.response.data) {
-        const errorMessage =
-          err.response.data.error ||
-          (err.response.data.errors && err.response.data.errors[0].msg) ||
-          "Registration failed. Please check your information and try again.";
-        setError(errorMessage);
-        throw new Error(errorMessage);
-      } else {
-        const errorMessage =
-          "Network error. Please check your connection and try again.";
-        setError(errorMessage);
-        throw new Error(errorMessage);
-      }
+      const errorMessage =
+        err.response?.data?.error ||
+        (err.response?.data?.errors && err.response.data.errors[0].msg) ||
+        "Registration failed. Please check your information and try again.";
+      setError(errorMessage);
+      throw new Error(errorMessage);
     }
   }, []);
 
