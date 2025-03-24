@@ -909,4 +909,14 @@ router.post(
   })
 );
 
+// In userRoutes.js
+router.get("/debug/all-likes", protect, asyncHandler(async (req, res) => {
+const allLikes = await Like.find({}).sort({ createdAt: -1 });
+res.status(200).json({
+  success: true,
+  count: allLikes.length,
+  data: allLikes
+});
+}));
+
 export default router;

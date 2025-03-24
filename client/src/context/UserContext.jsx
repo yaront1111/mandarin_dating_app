@@ -318,22 +318,21 @@ export const UserProvider = ({ children }) => {
     if (!user) return;
     setLikesLoading(true);
     try {
-      if (!user._id || typeof user._id !== "string") {
-        console.warn("Current user ID is missing or invalid", user);
-        setLikedUsers([]);
-        return;
-      }
-      const isValidId = /^[0-9a-fA-F]{24}$/.test(user._id);
-      if (!isValidId) {
-        console.warn(`Invalid user ID format: ${user._id}`);
-        setLikedUsers([]);
-        return;
-      }
       const response = await apiService.get("/users/likes");
-      if (response.success) {
-        setLikedUsers(response.data || []);
+      console.log("LIKES RESPONSE:", response); // Log the entire response
+
+      if (response.success && Array.isArray(response.data)) {
+        // Transform data if needed to ensure it's in the expected format
+        const formattedLikes = response.data.map(like => ({
+          recipient: like.recipient, // Ensure this is a string
+          sender: like.sender,
+          createdAt: like.createdAt || new Date().toISOString()
+        }));
+
+        console.log("FORMATTED LIKES:", formattedLikes); // Log the formatted data
+        setLikedUsers(formattedLikes);
       } else {
-        console.error("Error in getLikedUsers:", response.error);
+        console.error("Invalid response format:", response);
         setLikedUsers([]);
       }
     } catch (err) {
@@ -351,11 +350,34 @@ export const UserProvider = ({ children }) => {
     }
   }, [isAuthenticated, user, getLikedUsers]);
 
-  // Check if a user is liked
   const isUserLiked = useCallback(
     (userId) => {
-      if (!likedUsers || !Array.isArray(likedUsers)) return false;
-      return likedUsers.some((like) => like && like.recipient === userId);
+      if (!likedUsers || !Array.isArray(likedUsers) || likedUsers.length === 0) {
+        return false;
+      }
+
+      // Try different comparison approaches
+      return likedUsers.some((like) => {
+        if (!like) return false;
+
+        // Try string comparison
+        if (typeof like.recipient === 'string' && like.recipient === userId) {
+          return true;
+        }
+
+        // Try comparing as string if recipient is an object
+        if (like.recipient && like.recipient.toString && like.recipient.toString() === userId) {
+          return true;
+        }
+
+        // Handle case where recipient might be an object with _id
+        if (like.recipient && like.recipient._id &&
+            (like.recipient._id === userId || like.recipient._id.toString() === userId)) {
+          return true;
+        }
+
+        return false;
+      });
     },
     [likedUsers]
   );
@@ -468,5 +490,6 @@ export const useUser = () => {
   }
   return context;
 };
+
 
 export default UserContext;

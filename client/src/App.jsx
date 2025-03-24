@@ -1,12 +1,12 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
-import { ToastContainer } from "react-toastify"
-import "react-toastify/dist/ReactToastify.css"
-import "./styles/base.css"
-import "./styles/components.css"
-import "./styles/pages.css"
-import "./styles/utilities.css"
-import "./styles/settings.css"
-import "./styles/notifications.css"
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+import "./styles/base.css";
+import "./styles/components.css";
+import "./styles/pages.css";
+import "./styles/utilities.css";
+import "./styles/settings.css";
+import "./styles/notifications.css";
 
 import {
   AuthProvider,
@@ -15,19 +15,22 @@ import {
   StoriesProvider,
   ThemeProvider,
   NotificationProvider,
-} from "./context"
-import ErrorBoundary from "./components/ErrorBoundary.jsx"
-import PrivateRoute from "./components/PrivateRoute.jsx"
-import Login from "./pages/Login"
-import Register from "./pages/Register"
-import Dashboard from "./pages/Dashboard"
-import UserProfile from "./pages/UserProfile"
-import Profile from "./pages/Profile"
-import Settings from "./pages/Settings.jsx"
-import NotFound from "./pages/NotFound"
-import Home from "./pages/Home"
-import Messages from "./pages/Messages.jsx"
-import Subscription from "./pages/Subscription" // Import the Subscription component
+} from "./context";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
+import PrivateRoute from "./components/PrivateRoute.jsx";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Dashboard from "./pages/Dashboard";
+import UserProfile from "./pages/UserProfile";
+import Profile from "./pages/Profile";
+import Settings from "./pages/Settings.jsx";
+import NotFound from "./pages/NotFound";
+import Home from "./pages/Home";
+import Messages from "./pages/Messages.jsx";
+import Subscription from "./pages/Subscription";
+
+// Import your footer component
+import AppFooter from "./components/AppFooter.jsx"
 
 function App() {
   return (
@@ -84,7 +87,6 @@ function App() {
                             </PrivateRoute>
                           }
                         />
-                        {/* Add the Subscription route */}
                         <Route
                           path="/subscription"
                           element={
@@ -101,9 +103,11 @@ function App() {
                         hideProgressBar={false}
                         closeOnClick
                         pauseOnHover
-                        limit={5} /* Limit the number of toasts shown at once */
-                        theme="colored" /* Use colored theme for better visibility */
+                        limit={5}
+                        theme="colored"
                       />
+                      {/* Footer always displays on all pages */}
+                      <AppFooter />
                     </div>
                   </NotificationProvider>
                 </StoriesProvider>
@@ -113,7 +117,7 @@ function App() {
         </ThemeProvider>
       </Router>
     </ErrorBoundary>
-  )
+  );
 }
 
-export default App
+export default App;
