@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import {
   FaSmile,
   FaPaperPlane,
@@ -26,9 +26,12 @@ import { toast } from "react-toastify"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
 import socketService from "@services/socketService.jsx"
-// First, import the VideoCall component at the top with the other imports
 import VideoCall from "./VideoCall"
 
+/**
+ * EmbeddedChat component
+ * Renders a chat interface with message history, input, and video call functionality
+ */
 const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const { user, token } = useAuth()
   const navigate = useNavigate()
@@ -51,6 +54,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     remotePeerId,
   } = useChat()
 
+  // Local state
   const [newMessage, setNewMessage] = useState("")
   const [showEmojis, setShowEmojis] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
@@ -63,60 +67,72 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
   const [requestsData, setRequestsData] = useState([])
   const [incomingCall, setIncomingCall] = useState(null)
   const [isCallActive, setIsCallActive] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
 
+  // Refs
   const messagesEndRef = useRef(null)
   const chatInputRef = useRef(null)
   const fileInputRef = useRef(null)
   const typingTimeoutRef = useRef(null)
+  const messagesContainerRef = useRef(null)
 
-  // Retrieve latest token from context or localStorage.
-  const getAuthToken = () => token || localStorage.getItem("token")
+  // Create an axios instance with auth headers
+  const authAxios = useCallback(() => {
+    const token = localStorage.getItem("token") || sessionStorage.getItem("token")
 
-  // Create an axios instance with auth headers; memoized to avoid re-creation.
-  const authAxios = useMemo(() => {
     const instance = axios.create({
       baseURL: "",
-      headers: { "Content-Type": "application/json" },
-    })
-    instance.interceptors.request.use(
-      (config) => {
-        const authToken = getAuthToken()
-        if (authToken) {
-          config.headers.Authorization = `Bearer ${authToken}`
-        }
-        return config
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": token ? `Bearer ${token}` : ""
       },
-      (error) => Promise.reject(error),
-    )
-    return instance
-  }, [token])
+    })
 
-  // Load messages and check pending photo requests when chat opens.
+    return instance
+  }, [])
+
+  // Load messages and check pending photo requests when chat opens
   useEffect(() => {
     let isMounted = true
-    if (recipient && isOpen) {
-      setIsLoading(true)
-      getMessages(recipient._id)
-        .then((fetchedMessages) => {
-          if (isMounted && Array.isArray(fetchedMessages)) {
-            setMessagesData(fetchedMessages)
-          }
-          setIsLoading(false)
-        })
-        .catch((err) => {
-          setIsLoading(false)
-          toast.error("Failed to load messages. Please try again.")
-        })
 
-      // Check pending photo requests if user data is available.
-      if (user) checkPendingPhotoRequests()
+    const loadInitialData = async () => {
+      if (!recipient || !isOpen) return
+
+      setIsLoading(true)
+      setLoadingMessages(true)
+
+      try {
+        // Get messages
+        const fetchedMessages = await getMessages(recipient._id)
+
+        if (isMounted && Array.isArray(fetchedMessages)) {
+          setMessagesData(fetchedMessages)
+        }
+
+        // Check pending photo requests if user data is available
+        if (user && isMounted) {
+          await checkPendingPhotoRequests()
+        }
+      } catch (err) {
+        if (isMounted) {
+          toast.error("Failed to load messages. Please try again.")
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+          setLoadingMessages(false)
+        }
+      }
     }
+
+    loadInitialData()
+
     return () => {
       isMounted = false
     }
   }, [recipient, isOpen, user, getMessages])
 
-  // Update messagesData if context messages change.
+  // Update messagesData if context messages change
   useEffect(() => {
     if (Array.isArray(messages)) {
       setMessagesData(messages)
@@ -125,27 +141,30 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
 
   // Auto-scroll to the latest message.
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" })
+    }
   }, [messagesData])
 
-  // Focus on the chat input when the chat opens.
+  // Focus on the chat input when the chat opens
   useEffect(() => {
     if (isOpen && recipient) {
-      setTimeout(() => chatInputRef.current?.focus(), 300)
+      setTimeout(() => {
+        if (chatInputRef.current) {
+          chatInputRef.current.focus()
+        }
+      }, 300)
     }
   }, [isOpen, recipient])
 
-  // Cleanup on component unmount.
+  // Cleanup on component unmount
   useEffect(() => {
     return () => {
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-      if (isUploading) {
-        setIsUploading(false)
-        setAttachment(null)
-        setUploadProgress(0)
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
       }
     }
-  }, [isUploading])
+  }, [])
 
   // Sync with context call state
   useEffect(() => {
@@ -177,13 +196,6 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       if (callData && callerId === currentRecipientId) {
         console.log("Setting incoming call from current recipient:", recipient?.nickname)
         setIncomingCall(callData)
-      } else {
-        console.log(
-          "Ignoring call not from current recipient. Call from:",
-          callerId,
-          "Current recipient:",
-          currentRecipientId,
-        )
       }
     }
 
@@ -198,73 +210,62 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
     window.addEventListener("callEnded", handleCallEnded)
     window.addEventListener("callRejected", handleCallEnded)
 
-    // Direct socket listeners as backup
-    const incomingCallHandler = socketService.on("incomingCall", (callData) => {
-      console.log("Socket incomingCall event received directly in EmbeddedChat:", callData)
-
-      // Convert IDs to strings for proper comparison
-      const callerId = callData?.caller?.toString()
-      const currentRecipientId = recipient?._id?.toString()
-
-      if (callData && callerId === currentRecipientId) {
-        console.log("Setting incoming call from socket event")
-        setIncomingCall(callData)
-      } else {
-        console.log("Ignoring socket call not from current recipient")
-      }
-    })
-
-    const callEndedHandler = socketService.on("callEnded", () => {
-      console.log("Socket callEnded event received")
-      setIncomingCall(null)
-      setIsCallActive(false)
-    })
-
     return () => {
       window.removeEventListener("incomingCall", handleIncomingCall)
       window.removeEventListener("callEnded", handleCallEnded)
       window.removeEventListener("callRejected", handleCallEnded)
-
-      if (incomingCallHandler) socketService.off("incomingCall", incomingCallHandler)
-      if (callEndedHandler) socketService.off("callEnded", callEndedHandler)
     }
   }, [recipient])
 
-  // Check for pending photo access requests.
+  // Check for pending photo access requests
   const checkPendingPhotoRequests = async () => {
     try {
-      const response = await authAxios.get(`/api/users/photos/permissions`, {
+      const http = authAxios()
+      const response = await http.get(`/api/users/photos/permissions`, {
         params: { requestedBy: recipient?._id, status: "pending" },
       })
+
       if (response.data?.success) {
         const requests = response.data.data || []
         setPendingPhotoRequests(requests.length)
         setRequestsData(requests)
       } else {
-        setPendingPhotoRequests(1)
+        setPendingPhotoRequests(0)
       }
     } catch (error) {
-      setPendingPhotoRequests(1)
+      console.error("Error checking photo permissions:", error)
+      setPendingPhotoRequests(0)
     }
   }
 
-  // Approve all photo requests.
+  // Approve all photo requests
   const handleApproveAllRequests = async () => {
+    if (pendingPhotoRequests === 0) return
+
     setIsApprovingRequests(true)
+
     try {
+      const http = authAxios()
+
       if (requestsData.length > 0) {
+        // Process each request individually
         const results = await Promise.allSettled(
           requestsData.map((request) =>
-            authAxios.put(`/api/users/photos/permissions/${request._id}`, {
+            http.put(`/api/users/photos/permissions/${request._id}`, {
               status: "approved",
-            }),
-          ),
+            })
+          )
         )
+
+        // Count successful approvals
         const successCount = results.filter(
-          (result) => result.status === "fulfilled" && result.value.data.success,
+          (result) => result.status === "fulfilled" && result.value.data.success
         ).length
+
         if (successCount > 0) {
           toast.success(`Approved ${successCount} photo request${successCount !== 1 ? "s" : ""}`)
+
+          // Add system message
           const systemMessage = {
             _id: Date.now().toString(),
             sender: "system",
@@ -272,23 +273,31 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             createdAt: new Date().toISOString(),
             type: "system",
           }
+
           setMessagesData((prev) => [...prev, systemMessage])
+
+          // Send a message to the recipient
           if (sendMessage) {
             await sendMessage(recipient._id, "text", `I've approved your request to view my private photos.`)
           }
+
+          // Reset requests
           setPendingPhotoRequests(0)
           setRequestsData([])
         } else {
           toast.error("Failed to approve photo requests")
         }
       } else {
-        // Fallback approval method.
-        const response = await authAxios.post(`/api/users/photos/approve-all`, {
+        // Fallback approval method
+        const response = await http.post(`/api/users/photos/approve-all`, {
           requesterId: recipient._id,
         })
+
         if (response.data?.success) {
           const approvedCount = response.data.approvedCount || 1
           toast.success(`Approved ${approvedCount} photo request${approvedCount !== 1 ? "s" : ""}`)
+
+          // Add system message
           const systemMessage = {
             _id: Date.now().toString(),
             sender: "system",
@@ -296,10 +305,13 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             createdAt: new Date().toISOString(),
             type: "system",
           }
+
           setMessagesData((prev) => [...prev, systemMessage])
+
           if (sendMessage) {
             await sendMessage(recipient._id, "text", `I've approved your request to view my private photos.`)
           }
+
           setPendingPhotoRequests(0)
         } else {
           throw new Error("Approval failed")
@@ -307,19 +319,12 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       }
     } catch (error) {
       toast.error("Error approving photo requests. Please try again.")
-      const systemMessage = {
-        _id: Date.now().toString(),
-        sender: "system",
-        content: "Photo access approved (simulated).",
-        createdAt: new Date().toISOString(),
-        type: "system",
-      }
-      setMessagesData((prev) => [...prev, systemMessage])
     } finally {
       setIsApprovingRequests(false)
     }
   }
 
+  // Handle video call actions
   const handleAcceptCall = async () => {
     if (!incomingCall) return
 
@@ -336,6 +341,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         createdAt: new Date().toISOString(),
         type: "system",
       }
+
       setMessagesData((prev) => [...prev, systemMessage])
 
       // Clear the incoming call UI
@@ -363,6 +369,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         createdAt: new Date().toISOString(),
         type: "system",
       }
+
       setMessagesData((prev) => [...prev, systemMessage])
     } catch (error) {
       console.error("Error rejecting call:", error)
@@ -383,181 +390,23 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         createdAt: new Date().toISOString(),
         type: "system",
       }
-      setMessagesData((prev) => [...prev, systemMessage])
 
+      setMessagesData((prev) => [...prev, systemMessage])
       setIsCallActive(false)
     }
   }
 
-  // Utility functions for file icon and message time formatting.
-  const getFileIcon = useCallback((file) => {
-    if (!file) return <FaFile />
-    const fileType = file.type || ""
-    if (fileType.startsWith("image/")) return <FaImage />
-    if (fileType.startsWith("video/")) return <FaFileVideo />
-    if (fileType.startsWith("audio/")) return <FaFileAudio />
-    if (fileType === "application/pdf") return <FaFilePdf />
-    return <FaFileAlt />
-  }, [])
-
-  const formatMessageTime = useCallback((timestamp) => {
-    if (!timestamp) return ""
-    try {
-      return new Date(timestamp).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    } catch (e) {
-      return ""
-    }
-  }, [])
-
-  const formatMessageDate = useCallback((timestamp) => {
-    if (!timestamp) return "Unknown date"
-    try {
-      const date = new Date(timestamp)
-      const today = new Date()
-      const yesterday = new Date()
-      yesterday.setDate(yesterday.getDate() - 1)
-      if (date.toDateString() === today.toDateString()) return "Today"
-      if (date.toDateString() === yesterday.toDateString()) return "Yesterday"
-      return date.toLocaleDateString()
-    } catch (e) {
-      return "Unknown date"
-    }
-  }, [])
-
-  const groupMessagesByDate = useCallback(() => {
-    const groups = {}
-    if (!Array.isArray(messagesData)) return groups
-    messagesData.forEach((message) => {
-      if (message && message.createdAt) {
-        const date = formatMessageDate(message.createdAt)
-        groups[date] = groups[date] || []
-        groups[date].push(message)
-      }
-    })
-    return groups
-  }, [messagesData, formatMessageDate])
-
-  // Emoji handling.
-  const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"]
-  const handleEmojiClick = (emoji) => {
-    setNewMessage((prev) => prev + emoji)
-    setShowEmojis(false)
-    chatInputRef.current?.focus()
-  }
-
-  // Input event handlers.
-  const handleTyping = (e) => {
-    setNewMessage(e.target.value)
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
-    typingTimeoutRef.current = setTimeout(() => {
-      if (e.target.value.trim() && recipient && sendTyping) {
-        sendTyping(recipient._id)
-      }
-    }, 300)
-  }
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault()
-    if (attachment) return handleSendAttachment()
-    if (newMessage.trim() && !sendingMessage && recipient) {
-      if (user?.accountTier === "FREE" && newMessage.trim() !== "😉") {
-        return toast.error("Free accounts can only send winks. Upgrade to send messages.")
-      }
-      try {
-        await sendMessage(recipient._id, "text", newMessage.trim())
-        setNewMessage("")
-      } catch (error) {
-        toast.error(error.message || "Failed to send message")
-      }
-    }
-  }
-
-  const handleSendAttachment = async () => {
-    if (!attachment || !recipient || isUploading) return
-    setIsUploading(true)
-    try {
-      await sendFileMessage(recipient._id, attachment, (progress) => setUploadProgress(progress))
-      toast.success("File sent successfully")
-      setAttachment(null)
-      setUploadProgress(0)
-      if (fileInputRef.current) fileInputRef.current.value = ""
-    } catch (error) {
-      toast.error(error.message || "Failed to send file. Please try again.")
-    } finally {
-      setIsUploading(false)
-    }
-  }
-
-  const handleSendWink = async () => {
-    if (!sendingMessage && recipient) {
-      try {
-        await sendMessage(recipient._id, "wink", "😉")
-      } catch (error) {
-        toast.error(error.message || "Failed to send wink")
-      }
-    }
-  }
-
-  const handleFileAttachment = () => {
-    if (user?.accountTier === "FREE") {
-      return toast.error("Free accounts cannot send files. Upgrade to send files.")
-    }
-    fileInputRef.current?.click()
-  }
-
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("File is too large. Maximum size is 5MB.")
-      e.target.value = null
-      return
-    }
-    const allowedTypes = [
-      "image/jpeg",
-      "image/jpg",
-      "image/png",
-      "image/gif",
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "text/plain",
-      "audio/mpeg",
-      "audio/wav",
-      "video/mp4",
-      "video/quicktime",
-    ]
-    if (!allowedTypes.includes(file.type)) {
-      toast.error("File type not supported.")
-      e.target.value = null
-      return
-    }
-    setAttachment(file)
-    toast.info(`Selected file: ${file.name}`)
-    e.target.value = null
-  }
-
-  const handleRemoveAttachment = () => {
-    setAttachment(null)
-    setUploadProgress(0)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }
-
   const handleVideoCall = () => {
-    console.log("Video call button clicked", recipient)
+    if (!recipient?.isOnline) {
+      return toast.error(`${recipient.nickname} is currently offline. You can only call users who are online.`)
+    }
+
     if (user?.accountTier === "FREE") {
       return toast.error("Free accounts cannot make video calls. Upgrade for video calls.")
     }
 
     if (!recipient?._id) {
       return toast.error("Cannot start call: recipient information is missing")
-    }
-
-    if (!recipient.isOnline) {
-      return toast.error(`${recipient.nickname} is currently offline. You can only call users who are online.`)
     }
 
     initiateVideoCall(recipient._id)
@@ -574,6 +423,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           createdAt: new Date().toISOString(),
           type: "system",
         }
+
         setMessagesData((prev) => [...prev, systemMessage])
       })
       .catch((error) => {
@@ -582,21 +432,226 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       })
   }
 
-  const isTyping =
-    recipient && typingUsers && typingUsers[recipient._id] && Date.now() - typingUsers[recipient._id] < 3000
+  // Message handling functions
+  const handleTyping = (e) => {
+    setNewMessage(e.target.value)
+
+    // Clear any existing typing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+    }
+
+    // Only send typing indicator if there's content and not sending too frequently
+    if (e.target.value.trim() && recipient && sendTyping) {
+      typingTimeoutRef.current = setTimeout(() => {
+        sendTyping(recipient._id)
+      }, 300)
+    }
+  }
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault()
+
+    // If there's an attachment, send that instead
+    if (attachment) {
+      return handleSendAttachment()
+    }
+
+    // Don't send empty messages or while another message is sending
+    if (!newMessage.trim() || sendingMessage || !recipient) {
+      return
+    }
+
+    // Free account restriction (only winks)
+    if (user?.accountTier === "FREE" && newMessage.trim() !== "😉") {
+      return toast.error("Free accounts can only send winks. Upgrade to send messages.")
+    }
+
+    try {
+      await sendMessage(recipient._id, "text", newMessage.trim())
+      setNewMessage("")
+    } catch (error) {
+      toast.error(error.message || "Failed to send message")
+    }
+  }
+
+  const handleSendAttachment = async () => {
+    if (!attachment || !recipient || isUploading) return
+
+    setIsUploading(true)
+
+    try {
+      await sendFileMessage(recipient._id, attachment, (progress) => setUploadProgress(progress))
+      toast.success("File sent successfully")
+      setAttachment(null)
+      setUploadProgress(0)
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    } catch (error) {
+      toast.error(error.message || "Failed to send file. Please try again.")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleSendWink = async () => {
+    if (sendingMessage || !recipient) return
+
+    try {
+      await sendMessage(recipient._id, "wink", "😉")
+    } catch (error) {
+      toast.error(error.message || "Failed to send wink")
+    }
+  }
+
+  const handleFileAttachment = () => {
+    if (user?.accountTier === "FREE") {
+      return toast.error("Free accounts cannot send files. Upgrade to send files.")
+    }
+
+    if (fileInputRef.current) {
+      fileInputRef.current.click()
+    }
+  }
+
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0]
+
+    if (!file) return
+
+    // Validate file size
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("File is too large. Maximum size is 5MB.")
+      e.target.value = null
+      return
+    }
+
+    // Validate file type
+    const allowedTypes = [
+      "image/jpeg", "image/jpg", "image/png", "image/gif",
+      "application/pdf", "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain", "audio/mpeg", "audio/wav", "video/mp4", "video/quicktime",
+    ]
+
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("File type not supported.")
+      e.target.value = null
+      return
+    }
+
+    setAttachment(file)
+    toast.info(`Selected file: ${file.name}`)
+    e.target.value = null
+  }
+
+  const handleRemoveAttachment = () => {
+    setAttachment(null)
+    setUploadProgress(0)
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  // Emoji handling
+  const commonEmojis = ["😊", "😂", "😍", "❤️", "👍", "🙌", "🔥", "✨", "🎉", "🤔", "😉", "🥰"]
+
+  const handleEmojiClick = (emoji) => {
+    setNewMessage((prev) => prev + emoji)
+    setShowEmojis(false)
+
+    if (chatInputRef.current) {
+      chatInputRef.current.focus()
+    }
+  }
+
+  // Utility functions
+  const getFileIcon = (file) => {
+    if (!file) return <FaFile />
+
+    const fileType = file.type || ""
+
+    if (fileType.startsWith("image/")) return <FaImage />
+    if (fileType.startsWith("video/")) return <FaFileVideo />
+    if (fileType.startsWith("audio/")) return <FaFileAudio />
+    if (fileType === "application/pdf") return <FaFilePdf />
+
+    return <FaFileAlt />
+  }
+
+  const formatMessageTime = (timestamp) => {
+    if (!timestamp) return ""
+
+    try {
+      return new Date(timestamp).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    } catch (e) {
+      return ""
+    }
+  }
+
+  const formatMessageDate = (timestamp) => {
+    if (!timestamp) return "Unknown date"
+
+    try {
+      const date = new Date(timestamp)
+      const today = new Date()
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+
+      if (date.toDateString() === today.toDateString()) return "Today"
+      if (date.toDateString() === yesterday.toDateString()) return "Yesterday"
+
+      return date.toLocaleDateString()
+    } catch (e) {
+      return "Unknown date"
+    }
+  }
+
+  const groupMessagesByDate = () => {
+    const groups = {}
+
+    if (!Array.isArray(messagesData)) return groups
+
+    messagesData.forEach((message) => {
+      if (message && message.createdAt) {
+        const date = formatMessageDate(message.createdAt)
+        groups[date] = groups[date] || []
+        groups[date].push(message)
+      }
+    })
+
+    return groups
+  }
+
+  // Check if the recipient is typing
+  const isTyping = recipient &&
+                   typingUsers &&
+                   typingUsers[recipient._id] &&
+                   Date.now() - typingUsers[recipient._id] < 3000
 
   const handleClose = () => {
     if (typeof onClose === "function") onClose()
   }
 
+  // Don't render if chat is not open
   if (!isOpen) return null
 
+  // Render file message
   const renderFileMessage = (message) => {
     const { metadata } = message
+
     if (!metadata || !metadata.fileUrl) {
       return <p className="message-content">Attachment unavailable</p>
     }
+
     const isImage = metadata.fileType?.startsWith("image/")
+
     if (message.type === "system") {
       return (
         <div className="system-message-content">
@@ -605,6 +660,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         </div>
       )
     }
+
     return (
       <div className="file-message">
         {isImage ? (
@@ -629,7 +685,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               <FaFileAlt className="file-icon" />
             )}
             <span className="file-name">{metadata.fileName || "File"}</span>
-            <span className="file-size">{metadata.fileSize ? `(${Math.round(metadata.fileSize / 1024)} KB)` : ""}</span>
+            <span className="file-size">
+              {metadata.fileSize ? `(${Math.round(metadata.fileSize / 1024)} KB)` : ""}
+            </span>
             <a
               href={metadata.fileUrl}
               target="_blank"
@@ -670,20 +728,28 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           </div>
         </div>
         <div className="chat-header-actions">
-          <button
-            className="photo-request-btn"
-            onClick={handleApproveAllRequests}
-            title="Approve photo requests"
-            aria-label="Approve photo requests"
-            disabled={isApprovingRequests}
-          >
-            {isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
-            <span className="request-badge">!</span>
-          </button>
+          {pendingPhotoRequests > 0 && (
+            <button
+              className="photo-request-btn"
+              onClick={handleApproveAllRequests}
+              title="Approve photo requests"
+              aria-label="Approve photo requests"
+              disabled={isApprovingRequests}
+            >
+              {isApprovingRequests ? <FaSpinner className="fa-spin" /> : <FaLock />}
+              <span className="request-badge">!</span>
+            </button>
+          )}
+
           {user?.accountTier !== "FREE" && (
             <>
               {isCallActive ? (
-                <button className="end-call-btn" onClick={handleEndCall} title="End call" aria-label="End call">
+                <button
+                  className="end-call-btn"
+                  onClick={handleEndCall}
+                  title="End call"
+                  aria-label="End call"
+                >
                   <FaPhoneSlash />
                 </button>
               ) : (
@@ -699,7 +765,13 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               )}
             </>
           )}
-          <button className="close-chat-btn" onClick={handleClose} aria-label="Close chat" title="Close chat">
+
+          <button
+            className="close-chat-btn"
+            onClick={handleClose}
+            aria-label="Close chat"
+            title="Close chat"
+          >
             <FaTimes />
           </button>
         </div>
@@ -708,8 +780,12 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
       {user?.accountTier === "FREE" && (
         <div className="premium-banner">
           <FaCrown className="premium-icon" />
-          <span>Upgrade to send messages and make video calls (you can still send heart)</span>
-          <button className="upgrade-btn" onClick={() => navigate("/subscription")} aria-label="Upgrade to premium">
+          <span>Upgrade to send messages and make video calls (you can still send winks)</span>
+          <button
+            className="upgrade-btn"
+            onClick={() => navigate("/subscription")}
+            aria-label="Upgrade to premium"
+          >
             Upgrade
           </button>
         </div>
@@ -719,13 +795,17 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         <div className="active-call-banner">
           <FaVideo className="call-icon" />
           <span>Video call in progress with {recipient.nickname}</span>
-          <button className="end-call-btn" onClick={handleEndCall} aria-label="End call">
+          <button
+            className="end-call-btn"
+            onClick={handleEndCall}
+            aria-label="End call"
+          >
             <FaPhoneSlash /> End
           </button>
         </div>
       )}
 
-      <div className="messages-container">
+      <div className="messages-container" ref={messagesContainerRef}>
         {isLoading ? (
           <div className="loading-messages">
             <div className="spinner"></div>
@@ -744,28 +824,37 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                   key={message._id}
                   className={`message ${
                     message.sender === user?._id ? "sent" : "received"
-                  } ${message.type === "system" ? "system-message" : ""}`}
+                  } ${message.type === "system" ? "system-message" : ""} ${
+                    message.error ? "error" : ""
+                  } ${message.pending ? "pending" : ""}`}
                 >
                   {message.type === "text" && (
                     <>
                       <p className="message-content">{message.content}</p>
                       <span className="message-time">
                         {formatMessageTime(message.createdAt)}
-                        {message.sender === user?._id &&
-                          (message.read ? (
+                        {message.sender === user?._id && (
+                          message.pending ? (
+                            <span className="pending-indicator">●</span>
+                          ) : message.error ? (
+                            <span className="error-indicator">!</span>
+                          ) : message.read ? (
                             <FaCheckDouble className="read-indicator" />
                           ) : (
                             <FaCheck className="read-indicator" />
-                          ))}
+                          )
+                        )}
                       </span>
                     </>
                   )}
+
                   {message.type === "wink" && (
                     <div className="wink-message">
                       <p className="message-content">😉</p>
                       <span className="message-label">Wink</span>
                     </div>
                   )}
+
                   {message.type === "video" && (
                     <div className="video-call-message">
                       <FaVideo className="video-icon" />
@@ -773,7 +862,9 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
                       <span className="message-time">{formatMessageTime(message.createdAt)}</span>
                     </div>
                   )}
+
                   {message.type === "file" && renderFileMessage(message)}
+
                   {message.type === "system" && (
                     <div className="system-message-content">
                       <p>{message.content}</p>
@@ -785,6 +876,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             </React.Fragment>
           ))
         )}
+
         {isTyping && (
           <div className="typing-indicator">
             <span></span>
@@ -792,6 +884,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             <span></span>
           </div>
         )}
+
         {messageError && (
           <div className="message-error">
             <p>{messageError}</p>
@@ -800,6 +893,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             </button>
           </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -810,13 +904,21 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             <span className="attachment-name">{attachment.name}</span>
             <span className="attachment-size">({Math.round(attachment.size / 1024)} KB)</span>
           </div>
+
           {isUploading ? (
             <div className="upload-progress-container">
-              <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }}></div>
+              <div
+                className="upload-progress-bar"
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
               <span className="upload-progress-text">{uploadProgress}%</span>
             </div>
           ) : (
-            <button className="remove-attachment" onClick={handleRemoveAttachment} disabled={isUploading}>
+            <button
+              className="remove-attachment"
+              onClick={handleRemoveAttachment}
+              disabled={isUploading}
+            >
               <FaTimes />
             </button>
           )}
@@ -834,6 +936,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         >
           <FaSmile />
         </button>
+
         {showEmojis && (
           <div className="emoji-picker">
             <div className="emoji-header">
@@ -844,13 +947,19 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
             </div>
             <div className="emoji-list">
               {commonEmojis.map((emoji) => (
-                <button key={emoji} type="button" onClick={() => handleEmojiClick(emoji)} aria-label={`Emoji ${emoji}`}>
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => handleEmojiClick(emoji)}
+                  aria-label={`Emoji ${emoji}`}
+                >
                   {emoji}
                 </button>
               ))}
             </div>
           </div>
         )}
+
         <input
           type="text"
           placeholder={user?.accountTier === "FREE" ? "Free users can only send winks" : "Type a message..."}
@@ -861,6 +970,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           aria-label="Message input"
           title={user?.accountTier === "FREE" ? "Upgrade to send text messages" : "Type a message"}
         />
+
         <button
           type="button"
           className="input-attachment"
@@ -871,6 +981,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         >
           <FaPaperclip />
         </button>
+
         <input
           type="file"
           ref={fileInputRef}
@@ -879,6 +990,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
           aria-hidden="true"
           accept="image/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,audio/mpeg,audio/wav,video/mp4,video/quicktime"
         />
+
         <button
           type="button"
           className="input-wink"
@@ -889,6 +1001,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         >
           <FaHeart />
         </button>
+
         <button
           type="submit"
           className="input-send"
@@ -926,10 +1039,18 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
               <p>{recipient.nickname} is calling you</p>
             </div>
             <div className="incoming-call-actions">
-              <button className="reject-call-btn" onClick={handleRejectCall} aria-label="Reject call">
+              <button
+                className="reject-call-btn"
+                onClick={handleRejectCall}
+                aria-label="Reject call"
+              >
                 <FaTimes /> Decline
               </button>
-              <button className="accept-call-btn" onClick={handleAcceptCall} aria-label="Accept call">
+              <button
+                className="accept-call-btn"
+                onClick={handleAcceptCall}
+                aria-label="Accept call"
+              >
                 <FaVideo /> Accept
               </button>
             </div>
@@ -937,7 +1058,7 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         </div>
       )}
 
-      {/* Add CSS for video call components */}
+      {/* CSS styles for call components */}
       <style jsx="true">{`
         .video-call-overlay {
           position: fixed;
@@ -1067,6 +1188,20 @@ const EmbeddedChat = ({ recipient, isOpen, onClose, embedded = true }) => {
         
         .active-call-banner .end-call-btn:hover {
           background-color: #d32f2f;
+        }
+        
+        .message.pending .pending-indicator {
+          color: #999;
+          margin-left: 4px;
+          font-size: 10px;
+          animation: pulse 1s infinite;
+        }
+        
+        .message.error .error-indicator {
+          color: #f44336;
+          margin-left: 4px;
+          font-size: 12px;
+          font-weight: bold;
         }
       `}</style>
     </div>

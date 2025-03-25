@@ -319,7 +319,6 @@ export const UserProvider = ({ children }) => {
     setLikesLoading(true);
     try {
       const response = await apiService.get("/users/likes");
-      console.log("LIKES RESPONSE:", response); // Log the entire response
 
       if (response.success && Array.isArray(response.data)) {
         // Transform data if needed to ensure it's in the expected format
@@ -328,8 +327,6 @@ export const UserProvider = ({ children }) => {
           sender: like.sender,
           createdAt: like.createdAt || new Date().toISOString()
         }));
-
-        console.log("FORMATTED LIKES:", formattedLikes); // Log the formatted data
         setLikedUsers(formattedLikes);
       } else {
         console.error("Invalid response format:", response);
